@@ -1,0 +1,21 @@
+cargo-features = ["profile-rustflags"]
+[package]
+name = "lust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+lto = true
+opt-level = 3
+strip = true
+panic = "abort"
+
+
+[dependencies]
+dst-init = "0.3.0"
+rand = "0.8.5"
+macros={path="./macros"}
+paste = "1.0.12"
+peg = "0.8.1"
+gc  = {path = "gc"}
