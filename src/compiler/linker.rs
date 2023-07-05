@@ -6,14 +6,14 @@ use crate::compiler::errors::Result;
 use crate::compiler::compile_fn_literal;
 use crate::compiler::descriptors::{ConstantDescriptor, FnDescriptor, IdentPos, OpCodeExt};
 use crate::constants::Constant;
-use crate::value::{FnMeta, FnProto, FnProtoObj, FnProtoObjInit};
+use crate::value::{FnMeta, FnProto, FnProtoObj, FnProtoObjInit, String};
 use crate::vm::const_tbl::ConstTbl;
 use crate::vm::opcode::{OpCode, u24, U24};
 
 pub fn generate_code(ext:Vec<OpCodeExt>) -> Result<Vec<OpCode>>{
     let mut count = 0usize;
-    let mut codes = Vec::new();
-    let mut labels = HashMap::new();
+    let mut codes: Vec<OpCode> = Vec::new();
+    let mut labels: HashMap<&usize, usize> = HashMap::new();
     for x in &ext{
         match x {
             OpCodeExt::Label(label) => {
@@ -55,13 +55,13 @@ pub fn generate_fn<'gc, A:Allocator>(root:FnDescriptor, consts:&mut Vec<Constant
         match x {
             ConstantDescriptor::Integer(i) => consts[cnt] = Constant::Integer(i),
             ConstantDescriptor::Float(f) => consts[cnt] = Constant::Float(f),
-            ConstantDescriptor::String(_) => todo!(),
+            ConstantDescriptor::String(s) => consts[cnt] = Constant::String(String::from_str(s.as_str(), hdl)),
             ConstantDescriptor::Function(f) => consts[cnt] = Constant::FnProto(generate_fn(f, consts, codes, hdl)),
         }
         cnt +=1;
     }
 
-    let meta = FnMeta{
+    let meta: FnMeta = FnMeta{
         pc,
         param_num: root.param_num,
         stack_size: 255, //TODO

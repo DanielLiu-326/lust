@@ -602,6 +602,8 @@ pub mod test_compiler{
                print(fibonacci(i));
                 i = i+1;
             }
+            let d = "123"+"adsf";
+            print(d);
         "#;
         let ast = parser::src_file(src).unwrap();
         println!("============AST============");

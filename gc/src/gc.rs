@@ -248,6 +248,11 @@ impl<Alloc: Allocator> GcAlloc<Alloc> {
     pub const fn new(alloc: Alloc) -> Self {
         Self { alloc }
     }
+    
+    #[inline(always)]
+    pub fn inner(&self)->&Alloc{
+        &self.alloc
+    }
 
     #[inline(always)]
     pub fn emplace<Init: EmplaceInitializer>(

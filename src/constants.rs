@@ -2,7 +2,7 @@ use gc::{Collectable, MutateHandle, TraceHandle};
 use macros::mux;
 use std::alloc::Allocator;
 
-use crate::value::{Bool, Float, FnProto, Integer, Nil, OpError, Value};
+use crate::value::{Bool, Float, FnProto, Integer, Nil, OpError, Value, String};
 
 /// const a = 100;
 /// const func_a;
@@ -18,6 +18,7 @@ pub enum Constant<'gc> {
     Integer(Integer),
     Float(Float),
     FnProto(FnProto<'gc>),
+    String(String<'gc>),
 }
 
 impl<'gc> Collectable for Constant<'gc> {
@@ -37,6 +38,7 @@ impl<'gc> Constant<'gc> {
             Constant::Integer(val) => Ok(Value::Integer(val)),
             Constant::Float(val) => Ok(Value::Float(val)),
             Constant::FnProto(_) => Err(OpError::NotSupport),
+            Constant::String(t) => Ok(Value::String(t)),
         }
     }
 }

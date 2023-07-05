@@ -73,6 +73,12 @@ where
     pub fn wakeup(&self) {
         self.driver.wakeup();
     }
+
+    #[inline(always)]
+    pub fn allocator(&self) -> &A{
+        self.driver.allocator()
+    }
+
 }
 
 pub struct GcDriver<A>
@@ -235,5 +241,10 @@ where
         // update debt
         self.debt
             .set(self.debt.get() + (size as isize * self.config.alloc_factor as isize) / 100);
+    }
+    
+    #[inline(always)]
+    fn allocator(&self) -> &A{
+        &self.alloc.inner()
     }
 }

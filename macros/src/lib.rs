@@ -18,7 +18,7 @@ pub fn mux(_attr:TokenStream, input:TokenStream) -> TokenStream{
     let item_enum:ItemEnum = syn::parse(input.clone()).unwrap();
     let enum_ty = item_enum.ident.clone();
     let enum_ty_snake = enum_ty.to_string().to_case(Case::Snake);
-    let enum_generics = item_enum.generics.clone();
+    let enum_generics: syn::Generics = item_enum.generics.clone();
 
     let mut var_map = HashMap::new();
     item_enum.variants.iter().for_each(|x|{

@@ -73,7 +73,7 @@ peg::parser! { grammar my_parser() for str{
     }
 
     // FIXME:字符串常量BUG
-    rule VAL_STR()->&'input str =  n:$("\" "[^ '\n']* "\"") _{
+    rule VAL_STR()->&'input str =  "\"" n:$([^ '\n' | '\"']*) "\"" _{
         n
     }
 

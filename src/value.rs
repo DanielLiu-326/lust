@@ -1,5 +1,5 @@
 use dst_init::macros::dst;
-use dst_init::{DirectInitializer, EmplaceInitializer, Slice, SliceExt};
+use dst_init::{DirectInitializer, EmplaceInitializer, Slice, SliceExt, RawInitializer};
 use gc::thin::ThinInitializer;
 use gc::{Collectable, GarbageCollector, Gc, MutateHandle, Thin, TraceHandle};
 use macros::mux;
@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::fmt::{Debug, Display, Formatter, Pointer};
 use std::ops::{Add, Deref};
+use std::ptr::NonNull;
 
 use crate::util::{ok_likely, Cell};
 
@@ -25,6 +26,63 @@ pub type Nil = ();
 pub struct StringObj {
     hash: usize,
     data: [u8],
+}
+
+#[derive(Clone, Copy)]
+pub struct String<'gc>{
+    gc:Gc<'gc, Thin<StringObj>>,
+}
+
+impl PartialEq for String<'_>{
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl<'gc> String<'gc>{
+    pub fn from_str<A:Allocator>(s:&str, hdl:MutateHandle<'gc, '_, A>)->Self{
+        // TODO: Hash
+        // TOOD: better copy performance
+        let data = s.as_bytes();
+        let init = StringObjInit{
+            hash:0,
+            data:dst_init::Slice::iter_init(data.len(), data.into_iter().map(|i|*i))
+        };
+        Self{
+            gc:hdl.emplace(ThinInitializer::from(init))
+        }
+    }
+
+    pub fn as_str(&self)->&str{unsafe{
+        std::mem::transmute(&self.gc.data)
+    }}
+
+    pub fn add<A:Allocator>(&self, other:String<'gc>, hdl:MutateHandle<'gc,'_, A>) -> Self{unsafe{
+        // TOOD: better copy performance
+        let self_len = self.gc.data.len();
+        let other_len = other.gc.data.len();
+        let res_len = self_len+other_len;
+        let mut init = Slice::fn_init(res_len, ||{});
+        let layout = init.layout();
+        let data_init = RawInitializer::new(layout,|ptr|{unsafe{
+            let mut write_ptr = ptr.as_ptr();
+            std::ptr::copy(self.gc.data.as_ptr(), write_ptr, self_len);
+            write_ptr = write_ptr.add(self_len);
+            std::ptr::copy(other.gc.data.as_ptr(), write_ptr, other_len);
+            return NonNull::new(std::ptr::from_raw_parts_mut(ptr.as_ptr().cast(), res_len)).unwrap();
+        }});
+        Self{ gc: hdl.emplace(ThinInitializer::from(StringObjInit{
+            hash:0,
+            data:data_init
+        }))}
+    }}
+}
+
+impl<'gc> Debug for String<'gc>{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let str_data = std::str::from_utf8(&self.gc.deref().data).unwrap();
+        <str as Debug>::fmt(str_data, f)
+    }
 }
 
 // ==========================================FnProto==========================================
@@ -157,7 +215,7 @@ impl<'gc> Collectable for Closure<'gc> {
 
 impl<'gc> Closure<'gc> {
     pub fn default<A: Allocator>(hdl: MutateHandle<'gc, '_, A>) -> Self {
-        let gc = hdl.emplace(ThinInitializer::from(ClosureObjInit {
+        let gc: Gc<'_, Thin<ClosureObj<'_>>> = hdl.emplace(ThinInitializer::from(ClosureObjInit {
             meta: FnMeta::default(),
             up_values: Slice::iter_init(0, (0..).map(|a| unreachable!())),
         }));
@@ -239,6 +297,7 @@ pub enum Value<'gc> {
     Bool(Bool),
     Integer(Integer),
     Float(Float),
+    String(String<'gc>),
     Nil(Nil),
     Vector(Vector<'gc>),
     Closure(Closure<'gc>),
@@ -254,7 +313,8 @@ impl Display for Value<'_>{
             Value::Nil(t) => <Nil as Debug>::fmt(&t, f),
             Value::Vector(t) => <Vector as Debug>::fmt(&t, f),
             Value::Closure(t) => <Closure as Debug>::fmt(&t, f),
-            Value::UpValue(t) => <UpValue as Debug>::fmt(&t, f)
+            Value::UpValue(t) => <UpValue as Debug>::fmt(&t, f),
+            Value::String(t) => <String::<'_> as Debug>::fmt(&t, f),
         }
     }
 }
@@ -327,6 +387,41 @@ impl<'gc> Value<'gc> {
             Value::Integer(t) => Ok(t as Float),
             Value::Float(t) => Ok(t),
             _ => Err(OpError::NotSupport),
+        }
+    }
+
+    #[inline(always)]
+    pub fn to_string<A:Allocator>(self, hdl: MutateHandle<'gc, '_, A>) 
+        -> Result<String<'gc>, OpError> 
+    {
+        match self.unwrap() {
+            Value::Bool(t) => {
+                if t{
+                    Ok(String::from_str("true", hdl))
+                }else{
+                    Ok(String::from_str("false", hdl))
+                }
+            },
+            Value::Integer(t) => {
+                // TODO: better performance
+                let t_str = t.to_string();
+                Ok(String::from_str(t_str.as_str(), hdl))
+            },
+            Value::Float(t) => {
+                let t_str = t.to_string();
+                Ok(String::from_str(t_str.as_str(), hdl))
+            },
+            Value::String(t) => {
+                Ok(t)
+            },
+            Value::Nil(_) => {
+                Ok(String::from_str("nil", hdl))
+            },
+            Value::Vector(_) => todo!(),
+            Value::Closure(_) => todo!(),
+            Value::UpValue(t) => {
+                t.unwrap().to_string(hdl)
+            },
         }
     }
 
@@ -504,11 +599,14 @@ impl<'gc> Value<'gc> {
     pub fn op_add<A: Allocator>(
         self,
         b: Value<'gc>,
-        _hdl: MutateHandle<'gc, '_, A>,
+        hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok(Value::Integer(a + b))
-        } else {
+        } else if let (Value::String(a), b) = (self.unwrap(), b.unwrap()){
+            let b = b.to_string(hdl)?;
+            Ok(a.add(b, hdl).into())
+        }else{
             Ok(Value::Float(
                 ok_likely!(self.to_float()) + ok_likely!(b.to_float()),
             ))
@@ -623,4 +721,7 @@ impl<'gc> Value<'gc> {
 pub enum OpError {
     NotSupport,
     IndexOutOfBounds,
+}
+fn test(){
+    let a:String;
 }
