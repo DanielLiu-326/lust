@@ -7,7 +7,7 @@ use std::alloc::Allocator;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fmt::{Debug, Display, Formatter, Pointer};
-use std::ops::{Add, Deref};
+use std::ops::{Add, Deref, AddAssign};
 use std::ptr::NonNull;
 
 use crate::util::{ok_likely, Cell};
@@ -119,7 +119,7 @@ impl<'gc> FnProto<'gc> {
         A: Allocator,
         E: EmplaceInitializer<Output = [usize]>,
     {
-        let init = FnProtoObjInit { meta, captures };
+        let init: FnProtoObjInit<E> = FnProtoObjInit { meta, captures };
         let obj = hdl.emplace(init);
         Self { gc: obj }
     }
@@ -136,27 +136,67 @@ impl<'gc> FnProto<'gc> {
 }
 
 // ==========================================Vector==========================================
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Collectable)]
 pub struct Vector<'gc> {
     gc: Gc<'gc, Vec<Value<'gc>>>,
 }
 
 impl Debug for Vector<'_>{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,"Vector{:?}",self.gc.deref())
+        write!(f,"{:?}",self.gc.deref())
+    }
+}
+
+impl Display for Vector<'_>{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,"[")?;
+        let mut it = self.gc.iter();
+        while let Some(i) = it.next(){
+            write!(f,"{}", i)?;
+            if it.clone().next().is_some() {
+                write!(f,",")?;
+            }
+        }
+        write!(f,"]")
     }
 }
 
 impl<'gc> Vector<'gc> {
+    pub fn new<A:Allocator>(hdl:MutateHandle<'gc, '_, A>)->Self {
+        Vector{
+            gc: hdl.create(Vec::new())
+        }
+    }
+    
+    pub fn add_assign<A:Allocator>(self, rhs:Value<'gc>, hdl:MutateHandle<'gc, '_, A>){
+        let rhs = rhs.unwrap();
+        // TODO: unsafe
+        unsafe{
+            self.gc.clone().as_mut().push(rhs);
+        }
+    }
+
+    pub fn add<A:Allocator>(self, rhs:Value<'gc>, hdl:MutateHandle<'gc, '_, A>) -> Self{
+        let rhs = rhs.unwrap();
+        let mut res = self.gc.deref().clone();
+        res.push(rhs);
+        Vector{
+            gc:hdl.create(res),
+        }
+    }
+
     pub fn pop(&mut self, val: UpValue) -> Option<Value<'gc>> {
+        // TODO: unsafe
         unsafe { self.gc.as_mut().pop() }
     }
+    
     pub fn set(&mut self, index: usize, val: Value<'gc>) {
         unsafe {
             self.gc.as_mut().resize_with(index + 1, || Value::Nil(()));
             *self.gc.as_mut().last_mut().unwrap_unchecked() = val;
         }
     }
+
     pub fn get(&self, index: usize) -> Value<'gc> {
         if let Some(a) = self.gc.get(index) {
             return *a;
@@ -164,19 +204,21 @@ impl<'gc> Vector<'gc> {
             return Value::Nil(());
         }
     }
+
     pub fn len(&self) -> Integer {
         self.gc.len() as Integer
     }
+
     pub fn push(&mut self, val: Value<'gc>) {
         unsafe {
             self.gc.as_mut().push(val);
         }
     }
-}
-
-impl<'gc> Collectable for Vector<'gc> {
-    fn trace(&self, mut hdl: TraceHandle<'_>) {
-        hdl.reached(self.gc)
+    
+    pub fn to_string<A:Allocator>(&self, hdl:MutateHandle<'gc, '_, A>) -> String<'gc>{
+        // TODO: better performance
+        let s = std::format!("{}",self);
+        String::from_str(s.as_str(), hdl)
     }
 }
 
@@ -307,11 +349,11 @@ pub enum Value<'gc> {
 impl Display for Value<'_>{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Bool(t) => <Bool as Debug>::fmt(&t, f),
-            Value::Integer(t) => <Integer as Debug>::fmt(&t, f),
-            Value::Float(t) => <Float as Debug>::fmt(&t, f),
-            Value::Nil(t) => <Nil as Debug>::fmt(&t, f),
-            Value::Vector(t) => <Vector as Debug>::fmt(&t, f),
+            Value::Bool(t) => <Bool as Display>::fmt(&t, f),
+            Value::Integer(t) => <Integer as Display>::fmt(&t, f),
+            Value::Float(t) => <Float as Display>::fmt(&t, f),
+            Value::Nil(_) => <str as Display>::fmt("nil", f),
+            Value::Vector(t) => <Vector as Display>::fmt(&t, f),
             Value::Closure(t) => <Closure as Debug>::fmt(&t, f),
             Value::UpValue(t) => <UpValue as Debug>::fmt(&t, f),
             Value::String(t) => <String::<'_> as Debug>::fmt(&t, f),
@@ -355,7 +397,6 @@ impl<'gc> Value<'gc> {
         }else{
             self
         }
-
     }
 
     //t.data();
@@ -417,7 +458,10 @@ impl<'gc> Value<'gc> {
             Value::Nil(_) => {
                 Ok(String::from_str("nil", hdl))
             },
-            Value::Vector(_) => todo!(),
+            Value::Vector(t ) => {
+                let s = t.to_string(hdl);
+                Ok(s)
+            },
             Value::Closure(_) => todo!(),
             Value::UpValue(t) => {
                 t.unwrap().to_string(hdl)
@@ -606,6 +650,8 @@ impl<'gc> Value<'gc> {
         } else if let (Value::String(a), b) = (self.unwrap(), b.unwrap()){
             let b = b.to_string(hdl)?;
             Ok(a.add(b, hdl).into())
+        }else if let (Value::Vector(a), b)= (self.unwrap(), b.unwrap()){
+            Ok(a.add(b,hdl).into())
         }else{
             Ok(Value::Float(
                 ok_likely!(self.to_float()) + ok_likely!(b.to_float()),
@@ -712,6 +758,45 @@ impl<'gc> Value<'gc> {
     }
 
     #[inline(always)]
+    pub fn op_get_member<A:Allocator>(&self, index:Value<'gc>, hdl:MutateHandle<'gc, '_, A>) -> Result<Value<'gc>, OpError> {
+        match self.unwrap(){
+            Value::String(_) => todo!(),
+            Value::Vector(l) => {
+                if let Value::Integer(r) = index{
+                    // TODO: filter i64 range
+                    Ok(l.get(r.try_into().unwrap()))
+                }else{
+                    todo!()
+                }
+            },
+            Value::Closure(_) => todo!(),
+            _=>{
+                Err(OpError::NotSupport)
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn op_set_member<A:Allocator>(&self, index:Value<'gc>, value:Value<'gc>, hdl:MutateHandle<'gc, '_, A>) -> Result<(), OpError> {
+        match self.unwrap(){
+            Value::String(_) => todo!(),
+            Value::Vector(mut l) => {
+                if let Value::Integer(r) = index{
+                    // TODO: filter i64 range
+                    l.set(r.try_into().unwrap(), value);
+                    Ok(())
+                }else{
+                    todo!()
+                }
+            },
+            Value::Closure(_) => todo!(),
+            _=>{
+                Err(OpError::NotSupport)
+            }
+        }
+    }
+
+    #[inline(always)]
     pub fn obj_clone<A: Allocator>(self, hdl: MutateHandle<'gc, '_, A>) -> Result<Self, OpError> {
         todo!()
     }
@@ -721,7 +806,4 @@ impl<'gc> Value<'gc> {
 pub enum OpError {
     NotSupport,
     IndexOutOfBounds,
-}
-fn test(){
-    let a:String;
 }

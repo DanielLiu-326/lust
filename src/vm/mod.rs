@@ -5,7 +5,7 @@ use crate::compiler::{compile_expr_fn_call, compile_ret_stmt, compile_stmt};
 
 use crate::constants::Constant;
 use crate::util::ok_likely;
-use crate::value::{Closure, FnProto, Nil, OpError, UpValue, Value};
+use crate::value::{self, Closure, FnProto, Nil, OpError, UpValue, Value};
 use crate::vm::const_tbl::ConstTbl;
 use crate::vm::error::RuntimeError;
 use crate::vm::opcode::{ConstAddr, OpCode, Register, U24, UpValueAddr};
@@ -317,6 +317,23 @@ impl<'gc> VM<'gc> {
             }
             OpCode::LoadNil(r)=>{
                 *self.register_mut(r) = Value::Nil(())
+            }
+            OpCode::LoadEmptyVec(reg)=>{
+                *self.register_mut(reg) = Value::Vector(value::Vector::new(hdl))
+            }
+            OpCode::GetMember(dst, obj, idx)=>{
+                *self.register_mut(dst) = self.register(obj).op_get_member(self.register(idx), hdl)?;
+            },
+            OpCode::SetMember(obj, idx, val)=>{
+                let idx = self.register(idx);
+                let val = self.register(val);
+                self.register_mut(obj).op_set_member(idx, val, hdl)?;
+            }
+            OpCode::LoadFalse(reg) =>{
+                *self.register_mut(reg) = Value::Bool(false);
+            }
+            OpCode::LoadTrue(reg) =>{
+                *self.register_mut(reg) = Value::Bool(true);
             }
             t => {
                 println!("{:?}", t);

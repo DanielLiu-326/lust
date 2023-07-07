@@ -53,6 +53,12 @@ pub struct FnDescriptor {
     pub codes: Vec<OpCodeExt>,
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct VectorDescriptor{
+    pub res: Register,
+    pub codes: Vec<OpCodeExt>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConstantDescriptor {
     Integer(i64),

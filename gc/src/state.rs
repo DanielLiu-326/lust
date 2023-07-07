@@ -159,6 +159,7 @@ impl GcState {
                     }
                 }
                 // delete object
+                dbg!("gc swept!");
                 alloc.dealloc(sweep.inner());
             }
         } else {

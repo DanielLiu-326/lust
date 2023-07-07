@@ -114,6 +114,7 @@ pub enum Literal<'input> {
     Float(f64),
     Integer(i64),
     Dict(Vec<(Expr<'input>, Expr<'input>)>),
+    Vector(Vec<Expr<'input>>),
     Bool(bool),
     String(String<'input>),
     Function {

@@ -14,6 +14,8 @@ use std::rc::Rc;
 use std::str::FromStr;
 use crate::compiler::linker::generate_fn;
 
+use self::descriptors::VectorDescriptor;
+
 mod descriptors;
 mod errors;
 mod linker;
@@ -49,6 +51,7 @@ pub fn compile_expr_ident(
 }
 
 pub fn binary_op_to_opcode(
+    parent_scope: Rc<RefCell<dyn Scope>>,
     res: Register,
     op: BinaryOp,
     sub_res: (Register, Register),
@@ -56,51 +59,85 @@ pub fn binary_op_to_opcode(
 ) -> Result<Vec<OpCodeExt>> {
     let mut codes = Vec::new();
     codes.append(&mut opcodes.0);
-    // Fixme: Add Or And jmp logic
     codes.append(&mut opcodes.1);
-
     match op {
-        BinaryOp::OpOr => {
-            todo!()
-        }
-        BinaryOp::OpAnd => {
-            todo!()
-        }
-        BinaryOp::OpBitOr => {
-            codes.push(OpCodeExt::OpCode(OpCode::BitOr(res, sub_res.0, sub_res.1)))
-        }
-        BinaryOp::OpBitXor => {
-            codes.push(OpCodeExt::OpCode(OpCode::BitXor(res, sub_res.0, sub_res.1)))
-        }
-        BinaryOp::OpBitAnd => {
-            codes.push(OpCodeExt::OpCode(OpCode::BitAnd(res, sub_res.0, sub_res.1)))
-        }
+        BinaryOp::OpBitOr => codes.push(OpCodeExt::OpCode(OpCode::BitOr(res, sub_res.0, sub_res.1))),
+        BinaryOp::OpBitXor => codes.push(OpCodeExt::OpCode(OpCode::BitXor(res, sub_res.0, sub_res.1))),
+        BinaryOp::OpBitAnd => codes.push(OpCodeExt::OpCode(OpCode::BitAnd(res, sub_res.0, sub_res.1))),
         BinaryOp::OpNe => codes.push(OpCodeExt::OpCode(OpCode::NE(res, sub_res.0, sub_res.1))),
         BinaryOp::OpEq => codes.push(OpCodeExt::OpCode(OpCode::EQ(res, sub_res.0, sub_res.1))),
-        BinaryOp::OpRefEq => {
-            codes.push(OpCodeExt::OpCode(OpCode::RefEQ(res, sub_res.0, sub_res.1)))
-        }
-        BinaryOp::OpRefNe => {
-            codes.push(OpCodeExt::OpCode(OpCode::RefNE(res, sub_res.0, sub_res.1)))
-        }
+        BinaryOp::OpRefEq => codes.push(OpCodeExt::OpCode(OpCode::RefEQ(res, sub_res.0, sub_res.1))),
+        BinaryOp::OpRefNe => codes.push(OpCodeExt::OpCode(OpCode::RefNE(res, sub_res.0, sub_res.1))),
         BinaryOp::OpLt => codes.push(OpCodeExt::OpCode(OpCode::LT(res, sub_res.0, sub_res.1))),
         BinaryOp::OpGt => codes.push(OpCodeExt::OpCode(OpCode::GT(res, sub_res.0, sub_res.1))),
         BinaryOp::OpLe => codes.push(OpCodeExt::OpCode(OpCode::LE(res, sub_res.0, sub_res.1))),
         BinaryOp::OpGe => codes.push(OpCodeExt::OpCode(OpCode::GE(res, sub_res.0, sub_res.1))),
-        BinaryOp::OpBitLMov => {
-            codes.push(OpCodeExt::OpCode(OpCode::LMov(res, sub_res.0, sub_res.1)))
-        }
-        BinaryOp::OpBitRMov => {
-            codes.push(OpCodeExt::OpCode(OpCode::RMov(res, sub_res.0, sub_res.1)))
-        }
+        BinaryOp::OpBitLMov => codes.push(OpCodeExt::OpCode(OpCode::LMov(res, sub_res.0, sub_res.1))),
+        BinaryOp::OpBitRMov => codes.push(OpCodeExt::OpCode(OpCode::RMov(res, sub_res.0, sub_res.1))),
         BinaryOp::OpAdd => codes.push(OpCodeExt::OpCode(OpCode::Add(res, sub_res.0, sub_res.1))),
         BinaryOp::OpSub => codes.push(OpCodeExt::OpCode(OpCode::Sub(res, sub_res.0, sub_res.1))),
         BinaryOp::OpMult => codes.push(OpCodeExt::OpCode(OpCode::Mul(res, sub_res.0, sub_res.1))),
         BinaryOp::OpDiv => codes.push(OpCodeExt::OpCode(OpCode::Div(res, sub_res.0, sub_res.1))),
         BinaryOp::OpMod => codes.push(OpCodeExt::OpCode(OpCode::Mod(res, sub_res.0, sub_res.1))),
         BinaryOp::OpFact => codes.push(OpCodeExt::OpCode(OpCode::Fact(res, sub_res.0, sub_res.1))),
+        _=>{
+            println!("{:?}",op);
+            unreachable!()
+        }
     }
     Ok(codes)
+}
+
+pub fn compile_expr_binary_logic(
+    parent_scope: Rc<RefCell<dyn Scope>>,
+    l: Expr,
+    op: BinaryOp,
+    r: Expr,
+    advice: Option<Register>,
+) -> Result<ExprDescriptor> {
+    let mut codes = Vec::new();
+    let tmp = parent_scope.borrow_mut().reg_alloc().allocate().unwrap();// TODO: unwrap
+    if let BinaryOp::OpAnd = op{
+        codes.push(OpCodeExt::OpCode(OpCode::LoadFalse(tmp)));
+        let ExprDescriptor {
+            res: mut l_res,
+            codes: mut l_opcode,
+        } = compile_expr(parent_scope.clone(), l, Some(tmp))?;
+        let label = parent_scope.borrow_mut().label_mgr().borrow_mut().def_anonymous();
+        codes.push(OpCodeExt::OpCode(OpCode::TestTrue(l_res.into())));
+        codes.push(OpCodeExt::Goto(label));
+        codes.append(&mut l_opcode);
+        let ExprDescriptor {
+            res: mut r_res,
+            codes: mut r_opcode,
+        } = compile_expr(parent_scope.clone(), r, Some(tmp))?;
+        if tmp != r_res.into() {
+            codes.push(OpCodeExt::OpCode(OpCode::Move(tmp, r_res.into())))
+        } 
+        codes.push(OpCodeExt::Label(label));
+        return Ok(ExprDescriptor { res: ExprResPos::New(tmp), codes });
+    }else if let BinaryOp::OpOr = op{
+        codes.push(OpCodeExt::OpCode(OpCode::LoadTrue(tmp)));
+        let ExprDescriptor {
+            res: mut l_res,
+            codes: mut l_opcode,
+        } = compile_expr(parent_scope.clone(), l, Some(tmp))?;
+        let label = parent_scope.borrow_mut().label_mgr().borrow_mut().def_anonymous();
+        codes.push(OpCodeExt::OpCode(OpCode::TestFalse(l_res.into())));
+        codes.push(OpCodeExt::Goto(label));
+        codes.append(&mut l_opcode);
+        let ExprDescriptor {
+            res: mut r_res,
+            codes: mut r_opcode,
+        } = compile_expr(parent_scope.clone(), r, Some(tmp))?;
+        if tmp != r_res.into(){
+            codes.push(OpCodeExt::OpCode(OpCode::Move(tmp, r_res.into())))
+        } 
+        codes.push(OpCodeExt::Label(label));
+        return Ok(ExprDescriptor { res: ExprResPos::New(tmp), codes });
+    }else{
+        unreachable!()
+    }
 }
 
 pub fn compile_expr_binary(
@@ -110,6 +147,9 @@ pub fn compile_expr_binary(
     r: Expr,
     advice: Option<Register>,
 ) -> Result<ExprDescriptor> {
+    if let BinaryOp::OpAnd|BinaryOp::OpOr = op{
+        return compile_expr_binary_logic(parent_scope, l, op, r, advice);
+    }
     let ExprDescriptor {
         res: mut l_res,
         codes: mut l_opcode,
@@ -140,6 +180,7 @@ pub fn compile_expr_binary(
         ExprResPos::New(reg)
     };
     let codes = binary_op_to_opcode(
+        parent_scope.clone(),
         res.into(),
         op,
         (l_res.into(), r_res.into()),
@@ -177,12 +218,31 @@ pub fn compile_fn_literal(parent_scope: Rc<RefCell<dyn Scope>>, params:Vec<Ident
     })
 }
 
+pub fn compile_vector_literal(
+    parent_scope: Rc<RefCell<dyn Scope>>,
+    members:Vec<Expr>,
+    reg: Register,
+)->Result<VectorDescriptor>{
+    let mut codes = Vec::new();
+    codes.push(OpCodeExt::OpCode(OpCode::LoadEmptyVec(reg)));
+    for mem in members{
+        let scope = Rc::new(RefCell::new(BlockScope::new(parent_scope.clone())));
+        let ExprDescriptor{res:expr_res,codes:mut expr_codes} = compile_expr(scope, mem, None)?;
+        codes.append(&mut expr_codes);
+        codes.push(OpCodeExt::OpCode(OpCode::Add(reg, reg, expr_res.into())));
+    }
+    return Ok(VectorDescriptor {
+        res:reg,
+        codes,
+    });
+}
+
 pub fn compile_expr_literal(
     parent_scope: Rc<RefCell<dyn Scope>>,
     literal: Literal,
     advice: Option<Register>,
 ) -> Result<ExprDescriptor> {
-    let mut codes = Vec::new();
+    let mut codes: Vec<OpCodeExt> = Vec::new();
     // allocate register for target
     let res = if let Some(reg) = advice {
         ExprResPos::Source(reg)
@@ -234,6 +294,10 @@ pub fn compile_expr_literal(
                 .use_const(ConstantDescriptor::Function(desc));
             codes.push(OpCodeExt::OpCode(OpCode::MkClosure(res.into(), addr)))
         }
+        Literal::Vector(v) => {
+            let desc = compile_vector_literal(parent_scope, v, res.into())?;
+            codes = desc.codes;
+        },
     }
     Ok(ExprDescriptor { res, codes })
 }
@@ -296,6 +360,28 @@ pub fn compile_expr_fn_call(parent_scope:Rc<RefCell<dyn Scope>>, callee:Expr, ar
     })
 }
 
+pub fn compile_expr_index_visit(parent_scope: Rc<RefCell<dyn Scope>>, left:Expr, index:Expr)
+    -> Result<ExprDescriptor>
+{
+    let LeftExprDescriptor::Member{ obj, idx, mut codes } = compile_left_expr_member(parent_scope.clone(), left, index)?else{
+        unreachable!()
+    };
+
+    let res = if let ExprResPos::New(reg) = obj{
+        if let ExprResPos::New(idx) = idx{
+            parent_scope.borrow_mut().reg_alloc().recycle(idx)
+        }
+        reg
+    }else if let ExprResPos::Source(reg) = idx{
+        reg
+    }else{
+        parent_scope.borrow_mut().reg_alloc().allocate().unwrap() // TODO unwrap
+    };
+
+    codes.push(OpCodeExt::OpCode(OpCode::GetMember(res, obj.into(), idx.into())));
+    Ok(ExprDescriptor { res: ExprResPos::New(res), codes })
+}
+
 pub fn compile_expr(
     parent_scope: Rc<RefCell<dyn Scope>>,
     expr: Expr,
@@ -309,9 +395,8 @@ pub fn compile_expr(
         Expr::UnaryOp { expr, op } => todo!(),
         Expr::FnCall { callee, args }
             => compile_expr_fn_call(parent_scope, *callee, args),
-        Expr::IndexVisit { .. } => {
-            todo!()
-        }
+        Expr::IndexVisit { expr, index } 
+            => compile_expr_index_visit(parent_scope, *expr, *index),
         Expr::Brace(_) => {
             todo!()
         }
@@ -332,10 +417,18 @@ pub fn compile_left_expr_ident(parent_scope: Rc<RefCell<dyn Scope>>, id:Ident)
 pub fn compile_left_expr_member(parent_scope: Rc<RefCell<dyn Scope>>, prefix:Expr, index:Expr)
     -> Result<LeftExprDescriptor>
 {
-    let ExprDescriptor{res:prefix_res, codes:prefix_codes}
+    let mut codes = Vec::new();
+    let ExprDescriptor{res:prefix_res, codes:mut prefix_codes}
         = compile_expr(parent_scope.clone(), prefix, None)?;
-    //TODO: clean the temporary registers
-    todo!()
+    codes.append(&mut prefix_codes);
+    let ExprDescriptor{res:index_res, codes:mut index_codes}
+        = compile_expr(parent_scope.clone(), index, None)?;
+    codes.append(&mut index_codes);
+    Ok(LeftExprDescriptor::Member {
+        obj: prefix_res,
+        idx: index_res,
+        codes, 
+    })
 }
 
 pub fn compile_left_expr(parent_scope: Rc<RefCell<dyn Scope>>, expr:LeftExpr)
@@ -453,9 +546,17 @@ pub fn compile_assign_stmt(parent_scope: Rc<RefCell<dyn Scope>>, left: LeftExpr,
     -> Result<StmtDescriptor>
 {
     let mut codes = Vec::new();
-    let mut left_desc = compile_left_expr(parent_scope.clone(), left)?;
+    let left_desc = compile_left_expr(parent_scope.clone(), left)?;
     match left_desc{
-        LeftExprDescriptor::Member { obj, idx, codes } => todo!(),
+        LeftExprDescriptor::Member { obj, idx, codes:mut expr_codes } => {
+            codes.append(&mut expr_codes);
+            let ExprDescriptor{ res:right_res, codes:mut right_codes } 
+                = compile_expr(parent_scope.clone(), right, None)?;
+            codes.append(&mut right_codes);
+            codes.push(OpCodeExt::OpCode(OpCode::SetMember(obj.into(), idx.into(), right_res.into())));
+            // TODO: clean the unused registers
+            Ok(StmtDescriptor { codes })
+        },
         LeftExprDescriptor::Register (reg) => {
             let mut right_res = compile_expr(parent_scope, right, Some(reg))?;
             codes.append(&mut right_res.codes);
@@ -588,30 +689,54 @@ pub mod test_compiler{
     //#[test]
     pub(crate) fn test() {
         //let end = 1000000000;
-        let src = r#"
-            let fibonacci = nil;
-            fibonacci = fn(a){
-                if(a<2){
-                    return 1;
-                }else{
-                    return fibonacci(a-1)+ fibonacci(a-2);
-                }
-            };
-            let i = 0;
-            while(i<30){
-               print(fibonacci(i));
-                i = i+1;
+        r#"            
+        let fibonacci = nil;
+        fibonacci = fn(a){
+            if(a<2){
+                return 1;
+            }else{
+                return fibonacci(a-1)+ fibonacci(a-2);
             }
-            let d = "123"+"adsf";
-            print(d);
-        "#;
+        };
+        let i = 0;
+        while(i<30){
+           print(fibonacci(i));
+            i = i+1;
+        }"#;
+        r#"let unsorted = [6,8,1,4,3,9,8,2,1,7,4,5,3];
+        let quick_sort = nil;
+        quick_sort = fn(vec, left, right){
+            if(right <= left){
+                return nil ;
+            }
+            let pivot = vec[0];
+            let l = left;
+            let r = right;
+            while(l<r){
+                while( l<r && vec[r]>pivot ) r = r - 1;
+                vec[l] = vec[r];
+                while( l<r && vec[l]<pivot ) l = l + 1;
+                vec[r] = vec[l];
+            }
+            vec[l] = pivot;
+            quick_sort(vec, left, l);
+            quick_sort(vec, l+1, right);
+        };
+        print(quick_sort(unsorted, 0, 13));"#;
+        let src = r#"
+        let test = fn(out){
+            print("adsf");
+            return test;
+        };
+        test(true)&&test(false);
+"#;
         let ast = parser::src_file(src).unwrap();
         println!("============AST============");
         println!("{:?}", ast);
 
         println!("=========OpCodeExt=========");
-        let file_scope = Rc::new(RefCell::new(FileScope::new()));
-        let func = compile_fn_literal(file_scope, Vec::new(), ast.stmts).unwrap();
+        let file_scope: Rc<RefCell<FileScope>> = Rc::new(RefCell::new(FileScope::new()));
+        let func: crate::compiler::descriptors::FnDescriptor = compile_fn_literal(file_scope, Vec::new(), ast.stmts).unwrap();
         println!("compile result");
         println!("constant table:{:?}", func.consts);
         println!("extended opcode:{:?}", func.codes);
@@ -619,7 +744,7 @@ pub mod test_compiler{
         println!("===========OpCode==========");
         let mut gc:GarbageCollector<Global, RootableTy![VM<'gc>]> = GarbageCollector::new(Global, GcConfig::default(), |hdl| {
             let mut consts: Vec<Constant<'_>> = Vec::new();
-            let mut codes = Vec::new();
+            let mut codes: Vec<crate::vm::opcode::OpCode> = Vec::new();
             let func = generate_fn(func, &mut consts, &mut codes, hdl);
             println!("opcode:{:?}", codes);
             println!("consts:{:?}", consts);

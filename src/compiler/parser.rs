@@ -199,7 +199,17 @@ peg::parser! { grammar my_parser() for str{
     }
 
     rule assign_stmt() -> ast::Stmt<'input>
-        = left:left_expr() OP_ASSIGN() right:expr() SEMICOLON(){
+        = left:expr() OP_ASSIGN() right:expr() SEMICOLON(){
+        let left = match left{
+            ast::Expr::IndexVisit{expr,index} => ast::LeftExpr::Member {
+                prefix:*expr,
+                index:*index,
+            },
+            ast::Expr::Ident(ident) => ast::LeftExpr::Ident(ident),
+            _=>{
+                panic!("only left expression can be the left of assign statment!");
+            },
+        };
         ast::Stmt::AssignStmt{
             left,
             right,
@@ -480,7 +490,7 @@ peg::parser! { grammar my_parser() for str{
     }
 
     rule literal()->ast::Literal<'input>
-        = n:(val_float()/val_integer()/val_dict()/val_nil()/val_bool()/val_str()/val_function()){
+        = n:(val_float()/val_integer()/val_vector()/val_dict()/val_nil()/val_bool()/val_str()/val_function()){
         n
     }
 
@@ -507,6 +517,11 @@ peg::parser! { grammar my_parser() for str{
     rule val_float()->ast::Literal<'input>
         = value:VAL_FLOAT(){
         ast::Literal::Float(value)
+    }
+
+    rule val_vector()->ast::Literal<'input>
+        = BRACE_M_L() members:arg_list() BRACE_M_R(){
+        ast::Literal::Vector(members)
     }
 
     rule val_dict()->ast::Literal<'input>

@@ -123,7 +123,7 @@ where
             }
         };
         let ret = self.state.create(obj);
-        self.debt.set(self.debt.get() + ret.size() as isize);
+        self.alloc_debt(ret.size());
         ret
     }
 
@@ -147,7 +147,7 @@ where
             }
         };
         let ret = self.state.create(obj);
-        self.debt.set(self.debt.get() + ret.size() as isize);
+        self.alloc_debt(ret.size());
         ret
     }
 
@@ -174,6 +174,7 @@ where
 
     #[inline(always)]
     pub(crate) fn wakeup(&self) {
+        dbg!("gc wakeup!");
         self.state.wakeup()
     }
 

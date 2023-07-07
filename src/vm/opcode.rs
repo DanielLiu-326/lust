@@ -48,6 +48,7 @@ pub enum OpCode {
     JmpPost(u24),
 
     Load(Register, ConstAddr),
+    LoadEmptyVec(Register),
     LoadNil(Register),
     LoadFalse(Register),
     LoadTrue(Register),
@@ -58,6 +59,8 @@ pub enum OpCode {
     MkClosure(Register, ConstAddr),
     Call(Register, Register, Register), // callee,ret_num,arg_num
     Ret,
+    SetMember(Register, Register, Register),
+    GetMember(Register, Register, Register),
 
     TestFalse(Register), // if R is false then pc + 1
     TestTrue(Register),  // if R is true then pc +1
