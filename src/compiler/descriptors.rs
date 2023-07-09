@@ -1,10 +1,4 @@
-use crate::compiler::errors::CompileError;
 use crate::vm::opcode::{OpCode, Register, UpValueAddr};
-use std::cell::RefCell;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
-use std::ops::{AddAssign, Deref, SubAssign};
-use std::rc::Rc;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum IdentPos {

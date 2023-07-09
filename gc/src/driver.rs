@@ -1,15 +1,13 @@
-use std::alloc::{AllocError, Allocator};
+use std::alloc::Allocator;
 use std::cell::Cell;
-use std::marker::Unsize;
-use std::ptr::NonNull;
 
-use dst_init::EmplaceInitializer;
-use crate::gc::{Gc, GcAlloc, GcObject};
+use crate::gc::{Gc, GcAlloc};
 use crate::state::GcState;
-use crate::thin::Thin;
+
+use crate::util::Invariant;
 use crate::Phase::Sleep;
 use crate::{Collectable, GcConfig, Phase};
-use crate::util::Invariant;
+use dst_init::EmplaceInitializer;
 
 //何时运行垃圾收集器？
 //1.分配内存失败，执行完整收集过程
@@ -75,10 +73,9 @@ where
     }
 
     #[inline(always)]
-    pub fn allocator(&self) -> &A{
+    pub fn allocator(&self) -> &A {
         self.driver.allocator()
     }
-
 }
 
 pub struct GcDriver<A>
@@ -110,15 +107,13 @@ where
     }
 
     #[inline(always)]
-    pub(crate) fn create<'gc, T: Collectable>(&self, mut val: T) -> Gc<'gc, T> {
+    pub(crate) fn create<'gc, T: Collectable>(&self, val: T) -> Gc<'gc, T> {
         let obj = loop {
             match self.alloc.alloc(val) {
-                Ok(o) => unsafe {
-                    break o;
-                },
-                Err((e, t)) => {
-                    val = t
-                    //TODO FULL GC
+                Ok(o) => break o,
+                Err((_e, _t)) => {
+                    // val = t
+                    todo!("FULL GC")
                 }
             }
         };
@@ -140,7 +135,7 @@ where
                 Ok(o) => {
                     break o;
                 }
-                Err((e, t)) => {
+                Err((_e, t)) => {
                     init = t
                     //TODO FULL GC
                 }
@@ -243,9 +238,9 @@ where
         self.debt
             .set(self.debt.get() + (size as isize * self.config.alloc_factor as isize) / 100);
     }
-    
+
     #[inline(always)]
-    fn allocator(&self) -> &A{
+    fn allocator(&self) -> &A {
         &self.alloc.inner()
     }
 }

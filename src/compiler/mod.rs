@@ -4,24 +4,19 @@ use crate::compiler::descriptors::{
     OpCodeExt, StmtDescriptor,
 };
 use crate::compiler::errors::{CompileError, Result};
-use crate::compiler::linker::generate_fn;
-use crate::compiler::scope::{BlockScope, FileScope, FunctionScope, Scope};
+
+use crate::compiler::scope::{BlockScope, FunctionScope, Scope};
 use crate::vm::opcode::{u24, OpCode, Register, U24};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ffi::OsString;
-use std::intrinsics::rotate_left;
-use std::mem::needs_drop;
-use std::ops::{Deref, DerefMut};
-use std::ptr::from_raw_parts;
+
 use std::rc::Rc;
-use std::str::FromStr;
 
 use self::descriptors::VectorDescriptor;
 
 mod descriptors;
 mod errors;
-mod linker;
+mod generator;
 mod parser;
 mod scope;
 
@@ -54,7 +49,7 @@ pub fn compile_expr_ident(
 }
 
 pub fn binary_op_to_opcode(
-    parent_scope: Rc<RefCell<dyn Scope>>,
+    _parent_scope: Rc<RefCell<dyn Scope>>,
     res: Register,
     op: BinaryOp,
     sub_res: (Register, Register),
@@ -110,7 +105,7 @@ pub fn compile_expr_binary_logic(
     l: Expr,
     op: BinaryOp,
     r: Expr,
-    advice: Option<Register>,
+    _advice: Option<Register>,
 ) -> Result<ExprDescriptor> {
     let mut codes = Vec::new();
     let tmp = parent_scope.borrow_mut().reg_alloc().allocate().unwrap(); // TODO: unwrap
@@ -191,11 +186,11 @@ pub fn compile_expr_binary(
     }
     let ExprDescriptor {
         res: mut l_res,
-        codes: mut l_opcode,
+        codes: l_opcode,
     } = compile_expr(parent_scope.clone(), l, None)?;
     let ExprDescriptor {
         res: mut r_res,
-        codes: mut r_opcode,
+        codes: r_opcode,
     } = compile_expr(parent_scope.clone(), r, None)?;
     // allocate a register for result
     let res = if let Some(reg) = advice {
@@ -240,10 +235,10 @@ pub fn compile_fn_literal(
     params: Vec<Ident>,
     body: Vec<Stmt>,
 ) -> Result<FnDescriptor> {
-    let mut scope = Rc::new(RefCell::new(FunctionScope::new(parent_scope)));
+    let scope = Rc::new(RefCell::new(FunctionScope::new(parent_scope)));
     for param in &params {
         // reg is allocate from 0 increase
-        let reg = scope.borrow_mut().def_variable(param.to_string())?;
+        let _reg = scope.borrow_mut().def_variable(param.to_string())?;
     }
 
     let mut codes = compile_stmts(scope.clone(), body)?;
@@ -364,7 +359,7 @@ pub fn compile_expr_fn_call(
     }
 
     let arg_num = args.len();
-    let mut start = parent_scope
+    let start = parent_scope
         .borrow_mut()
         .reg_alloc()
         .allocate_top()
@@ -423,7 +418,12 @@ pub fn compile_expr_index_visit(
     left: Expr,
     index: Expr,
 ) -> Result<ExprDescriptor> {
-    let LeftExprDescriptor::Member{ obj, idx, mut codes } = compile_left_expr_member(parent_scope.clone(), left, index)?else{
+    let LeftExprDescriptor::Member {
+        obj,
+        idx,
+        mut codes,
+    } = compile_left_expr_member(parent_scope.clone(), left, index)?
+    else {
         unreachable!()
     };
 
@@ -459,7 +459,7 @@ pub fn compile_expr(
         Expr::BinaryOp { left, op, right } => {
             compile_expr_binary(parent_scope, *left, op, *right, advice)
         }
-        Expr::UnaryOp { expr, op } => todo!(),
+        Expr::UnaryOp { expr: _, op: _ } => todo!(),
         Expr::FnCall { callee, args } => compile_expr_fn_call(parent_scope, *callee, args),
         Expr::IndexVisit { expr, index } => compile_expr_index_visit(parent_scope, *expr, *index),
         Expr::Brace(_) => {
@@ -540,7 +540,7 @@ pub fn compile_if_stmt(
 ) -> Result<StmtDescriptor> {
     let ExprDescriptor {
         res: cond_res,
-        codes: mut codes,
+        mut codes,
     } = compile_expr(parent_scope.clone(), cond, None)?;
     let mut fail_codes = if let Some(stmt) = failure {
         compile_stmt(parent_scope.clone(), stmt)?.codes
@@ -548,12 +548,7 @@ pub fn compile_if_stmt(
         Vec::new()
     };
     let mut success_codes = compile_stmt(parent_scope.clone(), success)?.codes;
-    /// cond
-    /// chk
-    /// jmp
-    /// fail
-    /// jmp
-    /// success
+
     let success_start = parent_scope
         .borrow_mut()
         .label_mgr()
@@ -778,12 +773,12 @@ pub fn generate_code(ext: Vec<OpCodeExt>) -> Result<Vec<OpCode>> {
 
 //#[cfg(test)]
 pub mod test_compiler {
-    use crate::compiler::linker::generate_fn;
+    use crate::compiler::generator::generate_fn;
     use crate::compiler::scope::FileScope;
     use crate::compiler::{compile_fn_literal, parser};
     use crate::constants::Constant;
     use crate::vm::VM;
-    use gc::{impls::*, GarbageCollector, GcConfig, RootableTy};
+    use gc::{GarbageCollector, GcConfig, RootableTy};
     use std::alloc::Global;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -791,41 +786,6 @@ pub mod test_compiler {
     //#[test]
     pub(crate) fn test() {
         //let end = 1000000000;
-        r#"            
-        let fibonacci = nil;
-        fibonacci = fn(a){
-            if(a<2){
-                return 1;
-            }else{
-                return fibonacci(a-1)+ fibonacci(a-2);
-            }
-        };
-        let i = 0;
-        while(i<30){
-           print(fibonacci(i));
-            i = i+1;
-        }"#;
-        r#"let unsorted = [6,8,1,4,3,9,8,2,1,7,4,5,3];
-        let quick_sort = nil;
-        quick_sort = fn(vec, left, right){
-            if(right <= left){
-                return nil;
-            }
-            let pivot = vec[left];
-            let l = left;
-            let r = right;
-            while(l<r){
-                while( l<r && vec[r]>=pivot ) r = r - 1;
-                vec[l] = vec[r];
-                while( l<r && vec[l]<=pivot ) l = l + 1;
-                vec[r] = vec[l];
-            }
-            vec[l] = pivot;
-            quick_sort(vec, left, l-1);
-            quick_sort(vec, l+1, right);
-            return nil;
-        };
-        print(quick_sort(unsorted, 0, 13));"#;
         let src = r#"let unsorted = [6,8,1,4,3,9,8,2,1,7,4,5,3];
         let quick_sort = nil;
         quick_sort = fn(vec, left, right){
@@ -866,7 +826,7 @@ pub mod test_compiler {
             GarbageCollector::new(Global, GcConfig::default(), |hdl| {
                 let mut consts: Vec<Constant<'_>> = Vec::new();
                 let mut codes: Vec<crate::vm::opcode::OpCode> = Vec::new();
-                let func = generate_fn(func, &mut consts, &mut codes, hdl);
+                let _func = generate_fn(func, &mut consts, &mut codes, hdl);
                 println!("opcode:{:?}", codes);
                 println!("consts:{:?}", consts);
                 VM::new_test(consts, codes, hdl)

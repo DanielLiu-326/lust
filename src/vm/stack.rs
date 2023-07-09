@@ -1,10 +1,9 @@
 use gc::{Collectable, TraceHandle};
 use std::fmt::{Debug, Formatter};
-use std::slice::SliceIndex;
 
-use crate::value::{Nil, Value};
+use crate::value::Value;
 use crate::vm::opcode::Register;
-use crate::vm::StackFrame;
+
 //two stack,1 for register,1 for call stack
 // register redirect : 0: this pointer
 
@@ -64,6 +63,7 @@ impl<'gc, F> VmStack<'gc, F> {
         unsafe { self.bs_stack.get_unchecked(self.top - 1).0 }
     }
 
+    #[allow(unused)]
     #[inline(always)]
     fn end(&self) -> usize {
         unsafe { self.bs_stack.get_unchecked(self.top).1 }
@@ -107,7 +107,7 @@ impl<'gc, F> VmStack<'gc, F> {
 }
 
 impl<'gc, F> Debug for VmStack<'gc, F> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        unsafe { todo!() }
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
     }
 }

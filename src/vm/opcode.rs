@@ -5,6 +5,7 @@ pub type Register = u8;
 pub type ConstAddr = u16;
 pub type UpValueAddr = u16;
 
+#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 pub struct u24([u8; 3]);
 impl Debug for u24 {

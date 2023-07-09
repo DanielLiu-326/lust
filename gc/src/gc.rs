@@ -1,16 +1,13 @@
-use crate::thin::Thin;
-use crate::{Collectable, GarbageCollector, MutateHandle, TraceHandle};
-use crate::util::{metadata_of, unchecked_transmute, Invariant, Metadata};
-use std::alloc::{alloc, AllocError, Allocator, Layout};
+use crate::util::{unchecked_transmute, Invariant};
+use crate::{Collectable, TraceHandle};
+use dst_init::macros::dst;
+use dst_init::{DirectInitializer, EmplaceInitializer};
+use std::alloc::{AllocError, Allocator, Layout};
 use std::cell::Cell;
 use std::marker::Unsize;
-use std::mem::{transmute, MaybeUninit};
+use std::mem::transmute;
 use std::ops::{CoerceUnsized, Deref};
-use std::process::Output;
-use std::ptr::{drop_in_place, null, NonNull};
-use std::{mem, ptr};
-use dst_init::{DirectInitializer, EmplaceInitializer};
-use dst_init::macros::dst;
+use std::ptr::{self, drop_in_place, NonNull};
 
 /// ObjectColor is the object status for object.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -22,26 +19,26 @@ pub enum ObjectColor {
 
 /// The Gc Object Raw Memory Layout.
 #[dst]
-pub struct GcObject<T:?Sized>{
+pub struct GcObject<T: ?Sized> {
     layout: Layout, // memory layout for whole GcObject
     vtable: Cell<CollectableVTable>,
-    color : Cell<ObjectColor>,
-    next  : Cell<Option<GcGeneral>>,
-    data  : T,
+    color: Cell<ObjectColor>,
+    next: Cell<Option<GcGeneral>>,
+    data: T,
 }
 
-impl<T:?Sized> GcObject<T>{
+impl<T: ?Sized> GcObject<T> {
     #[inline(always)]
-    fn initializer<DstInit:EmplaceInitializer<Output=T>>(init:DstInit)->GcObjectInit<T,DstInit>{
-        unsafe {
-            let vtable = CollectableVTable::default();
-            GcObjectInit{
-                layout:Layout::from_size_align(0,1).unwrap(),
-                vtable:Cell::new(vtable),
-                color:Cell::new(ObjectColor::White),
-                next:Cell::new(None),
-                data:init,
-            }
+    fn initializer<DstInit: EmplaceInitializer<Output = T>>(
+        init: DstInit,
+    ) -> GcObjectInit<T, DstInit> {
+        let vtable = CollectableVTable::default();
+        GcObjectInit {
+            layout: Layout::from_size_align(0, 1).unwrap(),
+            vtable: Cell::new(vtable),
+            color: Cell::new(ObjectColor::White),
+            next: Cell::new(None),
+            data: init,
         }
     }
 }
@@ -53,12 +50,12 @@ pub struct CollectableVTable {
     drop: fn(NonNull<GcObject<General>>, usize),
 }
 
-impl Default for CollectableVTable{
+impl Default for CollectableVTable {
     fn default() -> Self {
-        Self{
+        Self {
             meta: 0,
-            trace: |_,_,_|{},
-            drop: |_,_|{},
+            trace: |_, _, _| {},
+            drop: |_, _| {},
         }
     }
 }
@@ -78,18 +75,18 @@ impl CollectableVTable {
         unsafe {
             let meta = ptr::metadata(t as *const T);
 
-            let mut trace:fn(NonNull<GcObject<General>>, usize, TraceHandle<'_>);
-            if T::need_trace(){
+            let trace: fn(NonNull<GcObject<General>>, usize, TraceHandle<'_>);
+            if T::need_trace() {
                 trace = |obj, meta, hdl| {
-                    let mut t: NonNull<GcObject<T>> =
+                    let t: NonNull<GcObject<T>> =
                         NonNull::from_raw_parts(obj.cast(), unchecked_transmute(meta));
-                        t.as_ref().data.trace(hdl)
+                    t.as_ref().data.trace(hdl)
                 };
-            }else{
-                trace = |_,_,_|{};
+            } else {
+                trace = |_, _, _| {};
             }
 
-            let drop = |obj:NonNull<GcObject<General>>, meta| {
+            let drop = |obj: NonNull<GcObject<General>>, meta| {
                 let mut t: NonNull<GcObject<T>> =
                     NonNull::from_raw_parts(obj.cast(), unchecked_transmute(meta));
                 drop_in_place(&mut t.as_mut().data as _)
@@ -105,21 +102,20 @@ impl CollectableVTable {
     }
 }
 
-
 /// Gc is a ptr to gc object.
 #[rustc_nonnull_optimization_guaranteed]
-pub struct Gc<'gc, T:'gc+?Sized> {
+pub struct Gc<'gc, T: 'gc + ?Sized> {
     obj: NonNull<GcObject<T>>,
     _invar: Invariant<'gc>,
 }
 
-impl<'gc,T:?Sized> PartialEq for Gc<'gc,T>{
+impl<'gc, T: ?Sized> PartialEq for Gc<'gc, T> {
     fn eq(&self, other: &Self) -> bool {
         self.obj == other.obj
     }
 }
 
-impl<'gc,T:?Sized> Eq for Gc<'gc,T>{}
+impl<'gc, T: ?Sized> Eq for Gc<'gc, T> {}
 
 impl<T: ?Sized> Clone for Gc<'_, T> {
     #[inline(always)]
@@ -128,7 +124,7 @@ impl<T: ?Sized> Clone for Gc<'_, T> {
     }
 }
 
-impl<T:?Sized> Copy for Gc<'_, T> {}
+impl<T: ?Sized> Copy for Gc<'_, T> {}
 
 impl<T: ?Sized> Deref for Gc<'_, T> {
     type Target = T;
@@ -139,7 +135,7 @@ impl<T: ?Sized> Deref for Gc<'_, T> {
     }
 }
 
-impl<T:Unsize<U>+?Sized,U:?Sized> CoerceUnsized<Gc<'_,U>> for Gc<'_,T>{}
+impl<T: Unsize<U> + ?Sized, U: ?Sized> CoerceUnsized<Gc<'_, U>> for Gc<'_, T> {}
 
 impl<'gc, T: ?Sized + 'gc> Gc<'gc, T> {
     #[inline(always)]
@@ -183,10 +179,11 @@ impl<'gc, T: ?Sized + 'gc> Gc<'gc, T> {
     }
 
     #[inline(always)]
-    pub unsafe fn as_mut(&mut self) -> &mut T{
+    pub unsafe fn as_mut(&mut self) -> &mut T {
         &mut self.obj.as_mut().data
     }
 
+    #[allow(unused)]
     #[inline(always)]
     pub(crate) unsafe fn as_ptr(self) -> *mut GcObject<T> {
         self.obj.as_ptr()
@@ -220,7 +217,7 @@ impl<T: ?Sized> Gc<'_, T> {
 pub struct General;
 
 impl Collectable for General {
-    fn trace(&self, hdl: TraceHandle<'_>) {
+    fn trace(&self, _hdl: TraceHandle<'_>) {
         panic!("calling Collectable::trace on a general gc pointer")
     }
 
@@ -234,7 +231,7 @@ pub type GcGeneral = Gc<'static, General>;
 impl GcGeneral {
     #[inline(always)]
     pub(crate) fn trace(&self, hdl: TraceHandle) {
-        unsafe { self.vtable().do_trace(self.obj, hdl) }
+        self.vtable().do_trace(self.obj, hdl)
     }
 }
 
@@ -248,9 +245,9 @@ impl<Alloc: Allocator> GcAlloc<Alloc> {
     pub const fn new(alloc: Alloc) -> Self {
         Self { alloc }
     }
-    
+
     #[inline(always)]
-    pub fn inner(&self)->&Alloc{
+    pub fn inner(&self) -> &Alloc {
         &self.alloc
     }
 
@@ -259,7 +256,8 @@ impl<Alloc: Allocator> GcAlloc<Alloc> {
         &self,
         init: Init,
     ) -> Result<NonNull<GcObject<Init::Output>>, (AllocError, Init)>
-        where <Init as EmplaceInitializer>::Output:Collectable
+    where
+        <Init as EmplaceInitializer>::Output: Collectable,
     {
         let mut init = GcObject::initializer(init);
         let layout = init.layout();
@@ -267,7 +265,7 @@ impl<Alloc: Allocator> GcAlloc<Alloc> {
         let mem = match self.alloc.allocate(layout) {
             Ok(mem) => mem,
             Err(e) => {
-                let GcObjectInit{data,..} = init;
+                let GcObjectInit { data, .. } = init;
                 return Err((e, data));
             }
         };
@@ -288,7 +286,7 @@ impl<Alloc: Allocator> GcAlloc<Alloc> {
         t: T,
     ) -> Result<NonNull<GcObject<T>>, (AllocError, T)> {
         let init = DirectInitializer::new(t);
-        self.emplace(init).map_err(|e|{(e.0,e.1.fallback())})
+        self.emplace(init).map_err(|e| (e.0, e.1.fallback()))
     }
 
     #[inline(always)]
@@ -305,12 +303,12 @@ mod test {
     use crate::gc::gc::{Gc, GcAlloc};
     use crate::gc::thin::{Thin, ThinInitializer};
     use crate::gc::{Collectable, GcAlloc, TraceHandle};
+    use crate::thin::ThinInitializer;
     use crate::{Gc, Test, Thin};
+    use dst_init::CoercionInitializer;
     use std::alloc::{alloc, Global};
     use std::fmt::Debug;
     use std::ops::Deref;
-    use dst_init::CoercionInitializer;
-    use crate::thin::ThinInitializer;
 
     impl Collectable for usize {
         fn trace(&self, hdl: TraceHandle<'_>) {}
@@ -345,8 +343,12 @@ mod test {
             impl<T: ?Sized + Debug + Collectable> Test for T {}
 
             let allocator = GcAlloc::new(Global::default());
-            let gc: Gc<Thin<dyn Test>> = Gc::create(allocator.emplace(ThinInitializer::from(CoercionInitializer::new(a)))
-                .map_err(|a|{()}).unwrap());
+            let gc: Gc<Thin<dyn Test>> = Gc::create(
+                allocator
+                    .emplace(ThinInitializer::from(CoercionInitializer::new(a)))
+                    .map_err(|a| ())
+                    .unwrap(),
+            );
             assert_eq!(format!("{:?}", &**gc), format!("{:?}", b)[..]);
             allocator.dealloc(unsafe { gc.inner() });
         }

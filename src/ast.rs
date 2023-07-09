@@ -1,9 +1,3 @@
-use std::ops::Range;
-
-pub struct Span<'input> {
-    data: &'input str,
-}
-
 #[derive(Debug)]
 pub struct Mod<'input> {
     pub name: Ident<'input>,

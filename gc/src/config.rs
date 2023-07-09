@@ -3,10 +3,10 @@ pub struct GcConfig {
     pub alloc_factor: usize,
 }
 
-impl Default for GcConfig{
+impl Default for GcConfig {
     #[inline(always)]
     fn default() -> Self {
-        Self{
+        Self {
             min_gc: 0,
             alloc_factor: 200,
         }

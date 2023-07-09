@@ -1,17 +1,16 @@
-use std::marker::{PhantomData};
-use std::alloc;
+use crate::{Collectable, Gc, TraceHandle};
+
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasher, Hash};
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
-use crate::{Collectable, Gc, TraceHandle};
 
-
-pub macro impl_collect_nothing($t:ty){
-    impl Collectable for $t{
-        fn trace(&self, hdl:TraceHandle<'_>){}
-        fn need_trace()->bool {
+pub macro impl_collect_nothing($t:ty) {
+    impl Collectable for $t {
+        fn trace(&self, _hdl: TraceHandle<'_>) {}
+        fn need_trace() -> bool {
             false
         }
     }
@@ -40,8 +39,7 @@ impl_collect_nothing!(std::path::PathBuf);
 impl_collect_nothing!(std::ffi::OsStr);
 impl_collect_nothing!(std::ffi::OsString);
 
-
-impl<T: ?Sized> Collectable for & T {
+impl<T: ?Sized> Collectable for &T {
     #[inline]
     fn need_trace() -> bool {
         false
@@ -127,10 +125,10 @@ impl<T: Collectable> Collectable for VecDeque<T> {
 }
 
 impl<K, V, S> Collectable for HashMap<K, V, S>
-    where
-        K: Eq + Hash + Collectable,
-        V: Collectable,
-        S: BuildHasher + 'static,
+where
+    K: Eq + Hash + Collectable,
+    V: Collectable,
+    S: BuildHasher + 'static,
 {
     #[inline]
     fn trace(&self, hdl: TraceHandle<'_>) {
@@ -147,9 +145,9 @@ impl<K, V, S> Collectable for HashMap<K, V, S>
 }
 
 impl<T, S> Collectable for HashSet<T, S>
-    where
-        T: Eq + Hash + Collectable,
-        S: BuildHasher + 'static,
+where
+    T: Eq + Hash + Collectable,
+    S: BuildHasher + 'static,
 {
     #[inline]
     fn trace(&self, hdl: TraceHandle<'_>) {
@@ -165,9 +163,9 @@ impl<T, S> Collectable for HashSet<T, S>
 }
 
 impl<K, V> Collectable for BTreeMap<K, V>
-    where
-        K: Eq + Ord + Collectable,
-        V: Collectable,
+where
+    K: Eq + Ord + Collectable,
+    V: Collectable,
 {
     #[inline]
     fn trace(&self, hdl: TraceHandle<'_>) {
@@ -184,8 +182,8 @@ impl<K, V> Collectable for BTreeMap<K, V>
 }
 
 impl<T> Collectable for BTreeSet<T>
-    where
-        T: Eq + Ord + Collectable,
+where
+    T: Eq + Ord + Collectable,
 {
     #[inline]
     fn need_trace() -> bool {
@@ -201,8 +199,8 @@ impl<T> Collectable for BTreeSet<T>
 }
 
 impl<T> Collectable for Rc<T>
-    where
-        T: ?Sized + Collectable,
+where
+    T: ?Sized + Collectable,
 {
     #[inline]
     fn trace(&self, hdl: TraceHandle<'_>) {
@@ -211,8 +209,8 @@ impl<T> Collectable for Rc<T>
 }
 
 impl<T> Collectable for Arc<T>
-    where
-        T: ?Sized + Collectable,
+where
+    T: ?Sized + Collectable,
 {
     #[inline]
     fn trace(&self, hdl: TraceHandle<'_>) {
@@ -221,8 +219,8 @@ impl<T> Collectable for Arc<T>
 }
 
 impl<T> Collectable for Cell<T>
-    where
-        T: 'static,
+where
+    T: 'static,
 {
     #[inline]
     fn need_trace() -> bool {
@@ -231,8 +229,8 @@ impl<T> Collectable for Cell<T>
 }
 
 impl<T> Collectable for RefCell<T>
-    where
-        T: 'static,
+where
+    T: 'static,
 {
     #[inline]
     fn need_trace() -> bool {
@@ -240,7 +238,7 @@ impl<T> Collectable for RefCell<T>
     }
 }
 
-impl<T:?Sized> Collectable for PhantomData<T> {
+impl<T: ?Sized> Collectable for PhantomData<T> {
     #[inline]
     fn need_trace() -> bool {
         false
@@ -260,7 +258,6 @@ impl<T: Collectable, const N: usize> Collectable for [T; N] {
         T::need_trace()
     }
 }
-
 
 macro_rules! impl_tuple {
     () => (
@@ -291,7 +288,6 @@ macro_rules! impl_tuple {
     );
 }
 
-
 impl_tuple! {}
 impl_tuple! {A}
 impl_tuple! {A B}
@@ -310,19 +306,18 @@ impl_tuple! {A B C D E F G H I J K L M N}
 impl_tuple! {A B C D E F G H I J K L M N O}
 impl_tuple! {A B C D E F G H I J K L M N O P}
 
-
-pub trait CollectableField{
-    fn trace_or_reached(&self, hdl:TraceHandle<'_>);
+pub trait CollectableField {
+    fn trace_or_reached(&self, hdl: TraceHandle<'_>);
 }
-impl<'gc, T:?Sized> CollectableField for Gc<'gc,T>{
+impl<'gc, T: ?Sized> CollectableField for Gc<'gc, T> {
     fn trace_or_reached(&self, mut hdl: TraceHandle<'_>) {
         hdl.reached(self.clone())
     }
 }
 
-impl<T:Collectable+?Sized> CollectableField for T{
+impl<T: Collectable + ?Sized> CollectableField for T {
     fn trace_or_reached(&self, hdl: TraceHandle<'_>) {
-        if T::need_trace(){
+        if T::need_trace() {
             self.trace(hdl)
         }
     }

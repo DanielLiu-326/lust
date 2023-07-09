@@ -2,7 +2,7 @@ use gc::{Collectable, MutateHandle, TraceHandle};
 use macros::mux;
 use std::alloc::Allocator;
 
-use crate::value::{Bool, Float, FnProto, Integer, Nil, OpError, String, Value};
+use crate::value::{Float, FnProto, Integer, OpError, String, Value};
 
 /// const a = 100;
 /// const func_a;
@@ -32,7 +32,7 @@ impl<'gc> Collectable for Constant<'gc> {
 impl<'gc> Constant<'gc> {
     pub(crate) fn load<A: Allocator>(
         self,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         match self {
             Constant::Integer(val) => Ok(Value::Integer(val)),

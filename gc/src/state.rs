@@ -1,12 +1,12 @@
 use crate::gc::ObjectColor::{Black, Grey, White};
-use crate::gc::{CollectableVTable, Gc, GcAlloc, GcGeneral, GcObject};
-use crate::thin::Thin;
+use crate::gc::{Gc, GcAlloc, GcGeneral, GcObject};
+
 use crate::Collectable;
 use crate::Phase::{Propagate, Sleep, Sweep};
-use std::alloc::{AllocError, Allocator};
+use std::alloc::Allocator;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
-use std::marker::Unsize;
+
 use std::ptr::NonNull;
 
 /// Garbage Collector Phase
@@ -133,7 +133,11 @@ impl GcState {
 
     /// sweep phase. sweep objects and mark as white for next gc cycle.
     #[inline(always)]
-    pub(crate) fn sweep<T: Collectable, Alloc: Allocator>(&self, root: &T, alloc: &GcAlloc<Alloc>) {
+    pub(crate) fn sweep<T: Collectable, Alloc: Allocator>(
+        &self,
+        _root: &T,
+        alloc: &GcAlloc<Alloc>,
+    ) {
         // 1. clean the white object
         // 2. make all iterated object turn white.
         let Some(sweep) = self.sweep.get() else {

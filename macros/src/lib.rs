@@ -1,16 +1,15 @@
 #![feature(proc_macro_quote,proc_macro_diagnostic)]
 #![feature(const_trait_impl)]
 
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 use std::collections::HashMap;
 use convert_case::{Case, Casing};
 use proc_macro2::Span;
-use syn::{ItemStruct, ItemEnum, GenericParam, GenericArgument};
+use syn::ItemEnum;
 
 use syn::spanned::Spanned;
 
-use quote::{quote};
-use syn::punctuated::Punctuated;
+use quote::quote;
 
 
 #[proc_macro_attribute]

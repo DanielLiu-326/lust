@@ -13,9 +13,9 @@
 mod config;
 mod driver;
 mod gc;
+pub mod impls;
 mod state;
 pub mod thin;
-pub mod impls;
 mod util;
 
 use std::alloc::Allocator;
@@ -26,12 +26,12 @@ use driver::GcDriver;
 pub use config::GcConfig;
 pub use driver::MutateHandle;
 pub use gc::Gc;
+pub use gc_derive::Collectable;
 pub use state::{Phase, TraceHandle};
 pub use thin::Thin;
-pub use gc_derive::Collectable;
 
 pub trait Collectable {
-    fn trace(&self, hdl: TraceHandle<'_>) {}
+    fn trace(&self, _hdl: TraceHandle<'_>) {}
     fn need_trace() -> bool {
         true
     }
@@ -53,23 +53,23 @@ pub trait Rootable<'gc> {
 pub type Root<'a, R> = <R as Rootable<'a>>::R;
 
 pub struct GarbageCollector<A, R>
-    where
-        A: Allocator,
-        R: for<'a> Rootable<'a> + ?Sized,
+where
+    A: Allocator,
+    R: for<'a> Rootable<'a> + ?Sized,
 {
     root: Root<'static, R>,
     driver: GcDriver<A>,
 }
 
 impl<A, R> GarbageCollector<A, R>
-    where
-        A: Allocator,
-        R: for<'a> Rootable<'a> + ?Sized,
+where
+    A: Allocator,
+    R: for<'a> Rootable<'a> + ?Sized,
 {
     #[inline(always)]
     pub fn new<F>(alloc: A, config: GcConfig, root_init: F) -> Self
-        where
-            F: for<'gc> FnOnce(MutateHandle<'gc, '_, A>) -> Root<'gc, R>,
+    where
+        F: for<'gc> FnOnce(MutateHandle<'gc, '_, A>) -> Root<'gc, R>,
     {
         let driver = GcDriver::new(alloc, config);
         let hdl = driver.mutate_handle();
@@ -84,8 +84,8 @@ impl<A, R> GarbageCollector<A, R>
 
     #[inline(always)]
     pub fn mutate<'a, F, Ret>(&'a mut self, f: F) -> Ret
-        where
-            F: for<'gc> FnOnce(&'a mut Root<'gc, R>, MutateHandle<'gc, 'a, A>) -> Ret,
+    where
+        F: for<'gc> FnOnce(&'a mut Root<'gc, R>, MutateHandle<'gc, 'a, A>) -> Ret,
     {
         f(&mut self.root, self.driver.mutate_handle())
     }

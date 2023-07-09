@@ -1,12 +1,12 @@
 use std::any::{Any, TypeId};
-use std::cell::UnsafeCell;
+
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::marker::{PhantomData, Unsize};
-use std::mem::{size_of, transmute, MaybeUninit};
-use std::ops::{AddAssign, Deref};
+use std::mem::MaybeUninit;
+use std::ops::AddAssign;
 use std::ptr::{null, Pointee};
-use std::{any, mem, ptr};
+use std::{mem, ptr};
 
 pub type Invariant<'a> = PhantomData<Cell<&'a ()>>;
 
@@ -75,9 +75,7 @@ impl<T: Copy> Cell<T> {
 
     #[inline(always)]
     pub fn set(&self, t: T) {
-        unsafe {
-            self.replace(t);
-        }
+        self.replace(t);
     }
 }
 
@@ -101,14 +99,16 @@ impl<T: PartialEq + Copy> PartialEq for Cell<T> {
     }
 }
 
-pub macro ok_likely($expr:expr) {{
-    let val = $expr;
-    if std::intrinsics::likely(val.is_ok()) {
-        unsafe { val.unwrap_unchecked() }
-    } else {
-        return Err(unsafe { val.unwrap_err_unchecked().into() });
+pub macro ok_likely($expr:expr) {
+    unsafe {
+        let val = $expr;
+        if std::intrinsics::likely(val.is_ok()) {
+            val.unwrap_unchecked()
+        } else {
+            return Err(val.unwrap_err_unchecked().into());
+        }
     }
-}}
+}
 
 #[derive(Clone)]
 pub struct MinimumIdAlloc<T> {

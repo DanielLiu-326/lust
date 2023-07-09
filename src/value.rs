@@ -1,16 +1,15 @@
 use dst_init::macros::dst;
 use dst_init::{DirectInitializer, EmplaceInitializer, RawInitializer, Slice, SliceExt};
 use gc::thin::ThinInitializer;
-use gc::{Collectable, GarbageCollector, Gc, MutateHandle, Thin, TraceHandle};
+use gc::{Collectable, Gc, MutateHandle, Thin, TraceHandle};
 use macros::mux;
 use std::alloc::Allocator;
-use std::collections::HashMap;
-use std::ffi::CString;
-use std::fmt::{Debug, Display, Formatter, Pointer};
-use std::ops::{Add, AddAssign, Deref};
+
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::Deref;
 use std::ptr::NonNull;
 
-use crate::util::{ok_likely, Cell};
+use crate::util::ok_likely;
 
 // ==========================================Primitives==========================================
 
@@ -58,27 +57,25 @@ impl<'gc> String<'gc> {
     }
 
     pub fn add<A: Allocator>(&self, other: String<'gc>, hdl: MutateHandle<'gc, '_, A>) -> Self {
-        unsafe {
-            // TOOD: better copy performance
-            let self_len = self.gc.data.len();
-            let other_len = other.gc.data.len();
-            let res_len = self_len + other_len;
-            let mut init = Slice::fn_init(res_len, || {});
-            let layout = init.layout();
-            let data_init = RawInitializer::new(layout, |ptr| unsafe {
-                let mut write_ptr = ptr.as_ptr();
-                std::ptr::copy(self.gc.data.as_ptr(), write_ptr, self_len);
-                write_ptr = write_ptr.add(self_len);
-                std::ptr::copy(other.gc.data.as_ptr(), write_ptr, other_len);
-                return NonNull::new(std::ptr::from_raw_parts_mut(ptr.as_ptr().cast(), res_len))
-                    .unwrap();
-            });
-            Self {
-                gc: hdl.emplace(ThinInitializer::from(StringObjInit {
-                    hash: 0,
-                    data: data_init,
-                })),
-            }
+        // TOOD: better copy performance
+        let self_len = self.gc.data.len();
+        let other_len = other.gc.data.len();
+        let res_len = self_len + other_len;
+        let mut init = Slice::fn_init(res_len, || {});
+        let layout = init.layout();
+        let data_init = RawInitializer::new(layout, |ptr| unsafe {
+            let mut write_ptr = ptr.as_ptr();
+            std::ptr::copy(self.gc.data.as_ptr(), write_ptr, self_len);
+            write_ptr = write_ptr.add(self_len);
+            std::ptr::copy(other.gc.data.as_ptr(), write_ptr, other_len);
+            return NonNull::new(std::ptr::from_raw_parts_mut(ptr.as_ptr().cast(), res_len))
+                .unwrap();
+        });
+        Self {
+            gc: hdl.emplace(ThinInitializer::from(StringObjInit {
+                hash: 0,
+                data: data_init,
+            })),
         }
     }
 }
@@ -173,7 +170,7 @@ impl<'gc> Vector<'gc> {
         }
     }
 
-    pub fn add_assign<A: Allocator>(self, rhs: Value<'gc>, hdl: MutateHandle<'gc, '_, A>) {
+    pub fn add_assign<A: Allocator>(self, rhs: Value<'gc>, _hdl: MutateHandle<'gc, '_, A>) {
         let rhs = rhs.unwrap();
         // TODO: unsafe
         unsafe {
@@ -190,7 +187,7 @@ impl<'gc> Vector<'gc> {
         }
     }
 
-    pub fn pop(&mut self, val: UpValue) -> Option<Value<'gc>> {
+    pub fn pop(&mut self, _val: UpValue) -> Option<Value<'gc>> {
         // TODO: unsafe
         unsafe { self.gc.as_mut().pop() }
     }
@@ -266,7 +263,7 @@ impl<'gc> Closure<'gc> {
     pub fn default<A: Allocator>(hdl: MutateHandle<'gc, '_, A>) -> Self {
         let gc: Gc<'_, Thin<ClosureObj<'_>>> = hdl.emplace(ThinInitializer::from(ClosureObjInit {
             meta: FnMeta::default(),
-            up_values: Slice::iter_init(0, (0..).map(|a| unreachable!())),
+            up_values: Slice::iter_init(0, (0..).map(|_a| unreachable!())),
         }));
         Self { gc }
     }
@@ -477,9 +474,8 @@ impl<'gc> Value<'gc> {
     pub fn op_or<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
-        use Value::*;
         let a = self.to_bool()?;
         let b = b.to_bool()?;
         Ok((a || b).into())
@@ -489,9 +485,8 @@ impl<'gc> Value<'gc> {
     pub fn op_and<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
-        use Value::*;
         let a = self.to_bool()?;
         let b = b.to_bool()?;
         Ok((a && b).into())
@@ -501,9 +496,8 @@ impl<'gc> Value<'gc> {
     pub fn op_bit_or<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
-        use Value::*;
         let a = self.to_integer()?;
         let b = b.to_integer()?;
         Ok((a | b).into())
@@ -513,9 +507,8 @@ impl<'gc> Value<'gc> {
     pub fn op_bit_and<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
-        use Value::*;
         let a = self.to_integer()?;
         let b = b.to_integer()?;
         Ok((a & b).into())
@@ -525,9 +518,8 @@ impl<'gc> Value<'gc> {
     pub fn op_bit_xor<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
-        use Value::*;
         let a = self.to_integer()?;
         let b = b.to_integer()?;
         Ok((a ^ b).into())
@@ -573,7 +565,7 @@ impl<'gc> Value<'gc> {
     pub fn op_lt<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok((a < b).into())
@@ -586,7 +578,7 @@ impl<'gc> Value<'gc> {
     pub fn op_gt<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok((a > b).into())
@@ -599,7 +591,7 @@ impl<'gc> Value<'gc> {
     pub fn op_le<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok((a <= b).into())
@@ -612,7 +604,7 @@ impl<'gc> Value<'gc> {
     pub fn op_ge<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok((a >= b).into())
@@ -625,7 +617,7 @@ impl<'gc> Value<'gc> {
     pub fn op_l_mov<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         let a = ok_likely!(self.to_integer());
         let b = ok_likely!(b.to_integer());
@@ -636,7 +628,7 @@ impl<'gc> Value<'gc> {
     pub fn op_r_mov<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         let a = ok_likely!(self.to_integer());
         let b = ok_likely!(b.to_integer());
@@ -676,7 +668,7 @@ impl<'gc> Value<'gc> {
     pub fn op_mul<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok(Value::Integer(a * b))
@@ -689,7 +681,7 @@ impl<'gc> Value<'gc> {
     pub fn op_div<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         if let (Value::Integer(a), Value::Integer(b)) = (self.unwrap(), b.unwrap()) {
             Ok(Value::Integer(a / b))
@@ -702,7 +694,7 @@ impl<'gc> Value<'gc> {
     pub fn op_mod<A: Allocator>(
         self,
         b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         let a = self.to_integer()?;
         let b = b.to_integer()?;
@@ -712,8 +704,8 @@ impl<'gc> Value<'gc> {
     #[inline(always)]
     pub fn op_fact<A: Allocator>(
         self,
-        b: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _b: Value<'gc>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         todo!()
     }
@@ -721,7 +713,7 @@ impl<'gc> Value<'gc> {
     #[inline(always)]
     pub fn op_bit_not<A: Allocator>(
         self,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         match self.unwrap() {
             Value::Bool(t) => Ok((!t).into()),
@@ -735,7 +727,7 @@ impl<'gc> Value<'gc> {
     #[inline(always)]
     pub fn op_not<A: Allocator>(
         self,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         let a = self.to_bool()?;
         Ok((!a).into())
@@ -765,7 +757,7 @@ impl<'gc> Value<'gc> {
     pub fn op_get_member<A: Allocator>(
         &self,
         index: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<Value<'gc>, OpError> {
         match self.unwrap() {
             Value::String(_) => todo!(),
@@ -787,7 +779,7 @@ impl<'gc> Value<'gc> {
         &self,
         index: Value<'gc>,
         value: Value<'gc>,
-        hdl: MutateHandle<'gc, '_, A>,
+        _hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<(), OpError> {
         match self.unwrap() {
             Value::Vector(mut l) => {
@@ -804,7 +796,7 @@ impl<'gc> Value<'gc> {
     }
 
     #[inline(always)]
-    pub fn obj_clone<A: Allocator>(self, hdl: MutateHandle<'gc, '_, A>) -> Result<Self, OpError> {
+    pub fn obj_clone<A: Allocator>(self, _hdl: MutateHandle<'gc, '_, A>) -> Result<Self, OpError> {
         todo!()
     }
 }

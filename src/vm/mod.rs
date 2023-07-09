@@ -1,11 +1,10 @@
-use crate::compiler::{compile_expr_fn_call, compile_ret_stmt, compile_stmt};
 use dst_init::{Slice, SliceExt};
-use gc::{Collectable, GarbageCollector, GcConfig, MutateHandle, RootableTy, TraceHandle};
-use std::alloc::{Allocator, Global};
+use gc::{Collectable, MutateHandle, TraceHandle};
+use std::alloc::Allocator;
 
 use crate::constants::Constant;
 use crate::util::ok_likely;
-use crate::value::{self, Closure, FnProto, Nil, OpError, UpValue, Value};
+use crate::value::{self, Closure, FnProto, OpError, UpValue, Value};
 use crate::vm::const_tbl::ConstTbl;
 use crate::vm::error::RuntimeError;
 use crate::vm::opcode::{ConstAddr, OpCode, Register, UpValueAddr, U24};
@@ -50,7 +49,7 @@ impl<'gc> VM<'gc> {
         program: Vec<OpCode>,
         hdl: MutateHandle<'gc, '_, A>,
     ) -> Self {
-        let mut stack = VmStack::new(
+        let stack = VmStack::new(
             255,
             StackFrame {
                 pc: 0,
@@ -71,11 +70,9 @@ impl<'gc> VM<'gc> {
         &mut self,
         hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<(), RuntimeError> {
-        unsafe {
-            ok_likely!(self.execute_code(*self.program.get_unchecked(self.pc), hdl));
-            self.pc += 1;
-            Ok(())
-        }
+        ok_likely!(self.execute_code(*self.program.get_unchecked(self.pc), hdl));
+        self.pc += 1;
+        Ok(())
     }
 
     #[inline(always)]
@@ -139,28 +136,16 @@ impl<'gc> VM<'gc> {
     fn register_mut(&mut self, reg: Register) -> &mut Value<'gc> {
         self.stack.register_mut(reg)
     }
-    #[inline(never)]
-    fn anchor_add(a: Register, b: Register, c: Register) {
-        println!("add")
-    }
-    #[inline(never)]
-    fn anchor_eq() {
-        println!("eq")
-    }
-    #[inline(never)]
-    fn anchor_jmp() {
-        println!("jmp")
-    }
     #[inline(always)]
     fn call(
         &mut self,
         fn_val: Register,
-        ret_num: Register,
-        arg_num: Register,
+        _ret_num: Register,
+        _arg_num: Register,
     ) -> Result<(), RuntimeError> {
         let Value::Closure(closure) = self.register(fn_val).unwrap() else {
-            let val = self.register(fn_val);
-            return Err(RuntimeError::OpError(OpError::NotSupport))
+            let _val = self.register(fn_val);
+            return Err(RuntimeError::OpError(OpError::NotSupport));
         };
         //TODO register frame size
         self.stack.push_frame(
@@ -219,10 +204,10 @@ impl<'gc> VM<'gc> {
                 *self.register_mut(a) = ok_likely!(self.register(b).op_eq(self.register(c), hdl));
                 hdl.root_retrace();
             }
-            OpCode::RefEQ(a, b, c) => {
+            OpCode::RefEQ(_a, _b, _c) => {
                 todo!()
             }
-            OpCode::RefNE(a, b, c) => {
+            OpCode::RefNE(_a, _b, _c) => {
                 todo!()
             }
             OpCode::LT(a, b, c) => {
@@ -350,6 +335,7 @@ impl<'gc> VM<'gc> {
             OpCode::LoadTrue(reg) => {
                 *self.register_mut(reg) = Value::Bool(true);
             }
+            #[allow(unreachable_patterns)]
             t => {
                 println!("{:?}", t);
                 todo!()

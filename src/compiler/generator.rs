@@ -1,9 +1,7 @@
-use crate::compiler::compile_fn_literal;
 use crate::compiler::descriptors::{ConstantDescriptor, FnDescriptor, IdentPos, OpCodeExt};
 use crate::compiler::errors::Result;
 use crate::constants::Constant;
-use crate::value::{FnMeta, FnProto, FnProtoObj, FnProtoObjInit, String};
-use crate::vm::const_tbl::ConstTbl;
+use crate::value::{FnMeta, FnProto, String};
 use crate::vm::opcode::{u24, OpCode, U24};
 use dst_init::SliceIterInitializer;
 use gc::MutateHandle;

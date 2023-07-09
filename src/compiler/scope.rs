@@ -3,10 +3,10 @@ use crate::compiler::errors::{CompileError, Result};
 use crate::util::MinimumIdAlloc;
 use crate::vm::opcode::{ConstAddr, Register, UpValueAddr};
 use gc::impls::impl_collect_nothing;
-use gc::{Collectable, Gc};
-use std::cell::{RefCell, RefMut};
+
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::marker::PhantomData;
+
 use std::rc::Rc;
 
 impl_collect_nothing!(IdentPos);
@@ -117,15 +117,15 @@ impl FileScope {
     }
 }
 impl Scope for FileScope {
-    fn def_variable(&mut self, ident: String) -> Result<Register> {
+    fn def_variable(&mut self, _ident: String) -> Result<Register> {
         todo!()
     }
 
-    fn use_ident(&mut self, ident: &str) -> Result<IdentPos> {
+    fn use_ident(&mut self, _ident: &str) -> Result<IdentPos> {
         todo!()
     }
 
-    fn use_const(&mut self, constant: ConstantDescriptor) -> ConstAddr {
+    fn use_const(&mut self, _constant: ConstantDescriptor) -> ConstAddr {
         todo!()
     }
 
@@ -173,7 +173,7 @@ impl Scope for FunctionScope {
         }
         let reg = self.reg_alloc.allocate();
         let Some(reg) = reg else {
-            return Err(CompileError::TooManyIdent)
+            return Err(CompileError::TooManyIdent);
         };
 
         self.variable_def.insert(ident, reg);
@@ -228,7 +228,7 @@ pub struct BlockScope {
 }
 
 impl BlockScope {
-    pub(crate) fn new(mut parent: Rc<RefCell<dyn Scope>>) -> Self {
+    pub(crate) fn new(parent: Rc<RefCell<dyn Scope>>) -> Self {
         Self {
             parent: parent.clone(),
             variable_def: Default::default(),
@@ -243,7 +243,7 @@ impl Scope for BlockScope {
             return Err(CompileError::IdentAlreadyExists);
         }
         let Some(reg) = self.reg_alloc.allocate() else {
-            return Err(CompileError::TooManyIdent)
+            return Err(CompileError::TooManyIdent);
         };
         self.variable_def.insert(ident, reg);
         return Ok(reg);

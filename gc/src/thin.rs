@@ -1,12 +1,12 @@
-use crate::util::{metadata_of, Metadata};
+use crate::util::Metadata;
+use crate::{Collectable, TraceHandle};
+use dst_init::EmplaceInitializer;
 use std::alloc::Layout;
-use std::marker::Unsize;
+
 use std::mem::{align_of_val_raw, size_of};
 use std::ops::{Deref, DerefMut};
 use std::ptr;
-use std::ptr::{NonNull, null};
-use dst_init::EmplaceInitializer;
-use crate::{Collectable, TraceHandle};
+use std::ptr::NonNull;
 
 #[repr(C)]
 pub struct Thin<Dyn: ?Sized> {
@@ -14,38 +14,43 @@ pub struct Thin<Dyn: ?Sized> {
     data: (),
 }
 
-pub struct ThinInitializer<Init:EmplaceInitializer>{
-    data:Init,
+pub struct ThinInitializer<Init: EmplaceInitializer> {
+    data: Init,
 }
 
-impl<Init:EmplaceInitializer> From<Init> for ThinInitializer<Init>{
+impl<Init: EmplaceInitializer> From<Init> for ThinInitializer<Init> {
     fn from(value: Init) -> Self {
-        Self{
-            data: value,
-        }
+        Self { data: value }
     }
 }
 
-impl<Init:EmplaceInitializer> EmplaceInitializer for ThinInitializer<Init>{
+impl<Init: EmplaceInitializer> EmplaceInitializer for ThinInitializer<Init> {
     type Output = Thin<Init::Output>;
 
     #[inline(always)]
     fn layout(&mut self) -> Layout {
         Layout::new::<Metadata<Init::Output>>()
-            .extend(self.data.layout()).unwrap()
-            .0.pad_to_align()
+            .extend(self.data.layout())
+            .unwrap()
+            .0
+            .pad_to_align()
     }
 
     #[inline(always)]
-    fn emplace(mut self, mut ptr: NonNull<u8>) -> NonNull<Self::Output> {unsafe{
-        let meta = ptr.as_ptr().cast::<Metadata<Init::Output>>();
-        let align = self.data.layout().align();
-        let padding = Layout::new::<Metadata<Init::Output>>().padding_needed_for(align);
-        let data = ptr.as_ptr().add(size_of::<Metadata<Init::Output>>()).add(padding);
-        let data = self.data.emplace(NonNull::new_unchecked(data));
-        meta.write(data.to_raw_parts().1);
-        ptr.cast()
-    }}
+    fn emplace(mut self, ptr: NonNull<u8>) -> NonNull<Self::Output> {
+        unsafe {
+            let meta = ptr.as_ptr().cast::<Metadata<Init::Output>>();
+            let align = self.data.layout().align();
+            let padding = Layout::new::<Metadata<Init::Output>>().padding_needed_for(align);
+            let data = ptr
+                .as_ptr()
+                .add(size_of::<Metadata<Init::Output>>())
+                .add(padding);
+            let data = self.data.emplace(NonNull::new_unchecked(data));
+            meta.write(data.to_raw_parts().1);
+            ptr.cast()
+        }
+    }
 }
 
 impl<Dyn: Collectable + ?Sized> Collectable for Thin<Dyn> {
