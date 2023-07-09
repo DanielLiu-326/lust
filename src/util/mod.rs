@@ -129,9 +129,9 @@ where
         }
     }
 
-    pub fn allocate_top(&mut self) -> Option<T>{
+    pub fn allocate_top(&mut self) -> Option<T> {
         let top = self.top();
-        if top == self.max{
+        if top == self.max {
             return None;
         }
         self.alloc += T::from(1u8);

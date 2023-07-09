@@ -17,7 +17,7 @@ pub struct VmStack<'gc, F> {
 }
 
 impl<'gc, F> VmStack<'gc, F> {
-    pub(crate) fn new(size:usize, f:F) -> Self {
+    pub(crate) fn new(size: usize, f: F) -> Self {
         let registers = [(); 1000].map(|_| Value::Nil(()));
         let mut frames = [(); 128].map(|_| None);
         frames[0] = Some(f);
@@ -80,10 +80,11 @@ impl<'gc, F> VmStack<'gc, F> {
     }
 
     #[inline(always)]
-    pub fn push_frame(&mut self, base:Register, size:usize, f:F) {
+    pub fn push_frame(&mut self, base: Register, size: usize, f: F) {
         unsafe {
             *self.frames.get_unchecked_mut(self.top) = Some(f);
-            *self.bs_stack.get_unchecked_mut(self.top) = (self.bs() + base as usize, self.bs()+ base as usize + size);
+            *self.bs_stack.get_unchecked_mut(self.top) =
+                (self.bs() + base as usize, self.bs() + base as usize + size);
             self.top += 1;
             self.bs = self.bs();
         }

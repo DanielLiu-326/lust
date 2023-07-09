@@ -25,7 +25,7 @@
 use crate::constants::Constant;
 use crate::value::{Integer, Value};
 use crate::vm::const_tbl::ConstTbl;
-use crate::vm::opcode::{OpCode, u24, U24};
+use crate::vm::opcode::{u24, OpCode, U24};
 use crate::vm::VM;
 use gc::{Collectable, GarbageCollector, Gc, GcConfig, Rootable, TraceHandle};
 use peg::Parse;

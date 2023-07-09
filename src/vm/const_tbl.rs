@@ -19,7 +19,7 @@ impl<'gc> ConstTbl<'gc> {
     pub(crate) fn new(consts: Vec<Constant<'gc>>) -> Self {
         Self { consts }
     }
-    
+
     pub(crate) fn get(&self, co: usize, addr: ConstAddr) -> Constant<'gc> {
         self.consts[co + addr as usize]
     }

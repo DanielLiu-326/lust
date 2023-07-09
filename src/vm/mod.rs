@@ -1,14 +1,14 @@
+use crate::compiler::{compile_expr_fn_call, compile_ret_stmt, compile_stmt};
 use dst_init::{Slice, SliceExt};
 use gc::{Collectable, GarbageCollector, GcConfig, MutateHandle, RootableTy, TraceHandle};
 use std::alloc::{Allocator, Global};
-use crate::compiler::{compile_expr_fn_call, compile_ret_stmt, compile_stmt};
 
 use crate::constants::Constant;
 use crate::util::ok_likely;
 use crate::value::{self, Closure, FnProto, Nil, OpError, UpValue, Value};
 use crate::vm::const_tbl::ConstTbl;
 use crate::vm::error::RuntimeError;
-use crate::vm::opcode::{ConstAddr, OpCode, Register, U24, UpValueAddr};
+use crate::vm::opcode::{ConstAddr, OpCode, Register, UpValueAddr, U24};
 use crate::vm::stack::VmStack;
 
 pub mod const_tbl;
@@ -45,22 +45,32 @@ impl<'gc> Collectable for VM<'gc> {
 
 impl<'gc> VM<'gc> {
     #[inline(always)]
-    pub fn new_test<A:Allocator>(consts:Vec<Constant<'gc>>, program:Vec<OpCode>, hdl:MutateHandle<'gc, '_, A>)->Self{
-        let mut stack = VmStack::new(255,StackFrame{
-            pc: 0,
-            constant_offset: 0,
-            closure: Closure::default(hdl),
-        });
-        Self{
+    pub fn new_test<A: Allocator>(
+        consts: Vec<Constant<'gc>>,
+        program: Vec<OpCode>,
+        hdl: MutateHandle<'gc, '_, A>,
+    ) -> Self {
+        let mut stack = VmStack::new(
+            255,
+            StackFrame {
+                pc: 0,
+                constant_offset: 0,
+                closure: Closure::default(hdl),
+            },
+        );
+        Self {
             pc: 0,
             stack,
-            consts:ConstTbl::new(consts),
+            consts: ConstTbl::new(consts),
             program,
         }
     }
 
     #[inline(always)]
-    pub fn step<A: Allocator>(&mut self, hdl: MutateHandle<'gc, '_, A>) -> Result<(), RuntimeError> {
+    pub fn step<A: Allocator>(
+        &mut self,
+        hdl: MutateHandle<'gc, '_, A>,
+    ) -> Result<(), RuntimeError> {
         unsafe {
             ok_likely!(self.execute_code(*self.program.get_unchecked(self.pc), hdl));
             self.pc += 1;
@@ -100,9 +110,9 @@ impl<'gc> VM<'gc> {
                 if reg <= 255 {
                     // is now closure register
                     let val = self.stack.register(reg as Register).clone();
-                    let upval = if let Value::UpValue(up) = val{
+                    let upval = if let Value::UpValue(up) = val {
                         up
-                    }else{
+                    } else {
                         UpValue::new(val, hdl)
                     };
                     *self.stack.register_mut(reg as Register) = upval.into();
@@ -114,7 +124,7 @@ impl<'gc> VM<'gc> {
             }),
             hdl,
         );
-        if let Value::UpValue(up) = self.stack.register_mut(reg){
+        if let Value::UpValue(up) = self.stack.register_mut(reg) {
             up.set(closure.into(), hdl);
         } else {
             *self.stack.register_mut(reg) = closure.into();
@@ -142,24 +152,33 @@ impl<'gc> VM<'gc> {
         println!("jmp")
     }
     #[inline(always)]
-    fn call(&mut self,fn_val:Register,ret_num:Register,arg_num:Register) -> Result<(),RuntimeError>{
+    fn call(
+        &mut self,
+        fn_val: Register,
+        ret_num: Register,
+        arg_num: Register,
+    ) -> Result<(), RuntimeError> {
         let Value::Closure(closure) = self.register(fn_val).unwrap() else {
             let val = self.register(fn_val);
             return Err(RuntimeError::OpError(OpError::NotSupport))
         };
         //TODO register frame size
-        self.stack.push_frame(fn_val + 1, 255,StackFrame{
-            pc: self.pc+1,
-            constant_offset: closure.meta().constant_offset,
-            closure,
-        });
-        self.pc = closure.meta().pc-1;
+        self.stack.push_frame(
+            fn_val + 1,
+            255,
+            StackFrame {
+                pc: self.pc + 1,
+                constant_offset: closure.meta().constant_offset,
+                closure,
+            },
+        );
+        self.pc = closure.meta().pc - 1;
         Ok(())
     }
 
     #[inline(always)]
-    fn ret(&mut self){
-        self.pc = self.stack.pop_frame().unwrap().pc-1;
+    fn ret(&mut self) {
+        self.pc = self.stack.pop_frame().unwrap().pc - 1;
     }
 
     #[inline(always)]
@@ -168,7 +187,6 @@ impl<'gc> VM<'gc> {
         op: OpCode,
         hdl: MutateHandle<'gc, '_, A>,
     ) -> Result<(), RuntimeError> {
-        //println!("{:?}",op);
         match op {
             OpCode::Or(a, b, c) => {
                 *self.register_mut(a) = ok_likely!(self.register(b).op_or(self.register(c), hdl));
@@ -286,7 +304,7 @@ impl<'gc> VM<'gc> {
                 let b = self.register(b);
                 if let Value::UpValue(r) = self.register_mut(a) {
                     r.set(b.unwrap(), hdl);
-                }else{
+                } else {
                     *self.register_mut(a) = b;
                 }
             }
@@ -296,9 +314,7 @@ impl<'gc> VM<'gc> {
             OpCode::MkClosure(reg, constant) => {
                 self.mk_closure(reg, constant, hdl)?;
             }
-            OpCode::Ret => {
-                self.ret()
-            }
+            OpCode::Ret => self.ret(),
             OpCode::TestTrue(a) => {
                 if ok_likely!(self.register(a).to_bool()) {
                     self.pc += 1;
@@ -309,30 +325,29 @@ impl<'gc> VM<'gc> {
                     self.pc += 1;
                 }
             }
-            OpCode::Call(fn_val,ret_num,arg_num) => {
+            OpCode::Call(fn_val, ret_num, arg_num) => {
                 ok_likely!(self.call(fn_val, ret_num, arg_num));
             }
-            OpCode::Print(t)=>{
-                println!("{}",self.register(t).unwrap())
+            OpCode::Print(t) => {
+                println!("{}", self.register(t).unwrap())
             }
-            OpCode::LoadNil(r)=>{
-                *self.register_mut(r) = Value::Nil(())
-            }
-            OpCode::LoadEmptyVec(reg)=>{
+            OpCode::LoadNil(r) => *self.register_mut(r) = Value::Nil(()),
+            OpCode::LoadEmptyVec(reg) => {
                 *self.register_mut(reg) = Value::Vector(value::Vector::new(hdl))
             }
-            OpCode::GetMember(dst, obj, idx)=>{
-                *self.register_mut(dst) = self.register(obj).op_get_member(self.register(idx), hdl)?;
-            },
-            OpCode::SetMember(obj, idx, val)=>{
+            OpCode::GetMember(dst, obj, idx) => {
+                *self.register_mut(dst) =
+                    self.register(obj).op_get_member(self.register(idx), hdl)?;
+            }
+            OpCode::SetMember(obj, idx, val) => {
                 let idx = self.register(idx);
                 let val = self.register(val);
                 self.register_mut(obj).op_set_member(idx, val, hdl)?;
             }
-            OpCode::LoadFalse(reg) =>{
+            OpCode::LoadFalse(reg) => {
                 *self.register_mut(reg) = Value::Bool(false);
             }
-            OpCode::LoadTrue(reg) =>{
+            OpCode::LoadTrue(reg) => {
                 *self.register_mut(reg) = Value::Bool(true);
             }
             t => {

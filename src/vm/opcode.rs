@@ -7,7 +7,7 @@ pub type UpValueAddr = u16;
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct u24([u8; 3]);
-impl Debug for u24{
+impl Debug for u24 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_u32())
     }
@@ -64,7 +64,7 @@ pub enum OpCode {
 
     TestFalse(Register), // if R is false then pc + 1
     TestTrue(Register),  // if R is true then pc +1
-    Print(Register), //TODO Temporary.
+    Print(Register),     //TODO Temporary.
 }
 
 pub trait U24 {

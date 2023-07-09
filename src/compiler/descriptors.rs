@@ -1,10 +1,10 @@
+use crate::compiler::errors::CompileError;
 use crate::vm::opcode::{OpCode, Register, UpValueAddr};
 use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::ops::{AddAssign, Deref, SubAssign};
 use std::rc::Rc;
-use crate::compiler::errors::CompileError;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum IdentPos {
@@ -47,14 +47,14 @@ pub struct StmtDescriptor {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct FnDescriptor {
-    pub consts:Vec<ConstantDescriptor>,
+    pub consts: Vec<ConstantDescriptor>,
     pub up_values: Vec<IdentPos>,
     pub param_num: usize,
     pub codes: Vec<OpCodeExt>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct VectorDescriptor{
+pub struct VectorDescriptor {
     pub res: Register,
     pub codes: Vec<OpCodeExt>,
 }
@@ -68,11 +68,11 @@ pub enum ConstantDescriptor {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LeftExprDescriptor{
+pub enum LeftExprDescriptor {
     Member {
-        obj:ExprResPos,
-        idx:ExprResPos,
-        codes:Vec<OpCodeExt>,
+        obj: ExprResPos,
+        idx: ExprResPos,
+        codes: Vec<OpCodeExt>,
     },
     UpValue(UpValueAddr),
     Register(Register),

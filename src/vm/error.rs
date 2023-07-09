@@ -9,7 +9,6 @@ pub enum RuntimeError {
     OpError(OpError),
 }
 
-
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()

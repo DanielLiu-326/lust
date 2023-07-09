@@ -2,7 +2,7 @@ use gc::{Collectable, MutateHandle, TraceHandle};
 use macros::mux;
 use std::alloc::Allocator;
 
-use crate::value::{Bool, Float, FnProto, Integer, Nil, OpError, Value, String};
+use crate::value::{Bool, Float, FnProto, Integer, Nil, OpError, String, Value};
 
 /// const a = 100;
 /// const func_a;

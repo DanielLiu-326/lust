@@ -14,83 +14,86 @@ type RegisterAllocator = MinimumIdAlloc<Register>;
 type LabelId = usize;
 
 #[derive(Copy, Clone)]
-pub struct LoopLabel{
-    pub begin:LabelId,
-    pub end  :LabelId,
+pub struct LoopLabel {
+    pub begin: LabelId,
+    pub end: LabelId,
 }
 
-struct LabelDef{
-    id:LabelId,
-    has_defined:bool,
+struct LabelDef {
+    id: LabelId,
+    has_defined: bool,
 }
 
-pub struct LabelManager{
-    loop_stack:Vec<LoopLabel>,
-    named:HashMap<String, LabelDef>,
-    allocate:LabelId,
+pub struct LabelManager {
+    loop_stack: Vec<LoopLabel>,
+    named: HashMap<String, LabelDef>,
+    allocate: LabelId,
 }
 
-impl LabelManager{
+impl LabelManager {
     pub fn new() -> Self {
-        Self{
+        Self {
             loop_stack: vec![],
             named: Default::default(),
             allocate: 0,
         }
     }
 
-    pub fn push_loop(&mut self)->LoopLabel{
-        let (begin,end) = (self.allocate,self.allocate+1);
+    pub fn push_loop(&mut self) -> LoopLabel {
+        let (begin, end) = (self.allocate, self.allocate + 1);
         self.allocate += 2;
-        LoopLabel{
-            begin,
-            end,
-        }
+        LoopLabel { begin, end }
     }
 
     pub fn now_loop(&mut self) -> Result<LoopLabel> {
-        self.loop_stack.last()
+        self.loop_stack
+            .last()
             .map(|a| *a)
             .ok_or(CompileError::NotInLoop)
     }
 
-    pub fn pop_loop(&mut self)->Result<LoopLabel>{
-        self.loop_stack.pop()
-            .ok_or(CompileError::NotInLoop)
+    pub fn pop_loop(&mut self) -> Result<LoopLabel> {
+        self.loop_stack.pop().ok_or(CompileError::NotInLoop)
     }
 
-    pub fn def_label(&mut self, label:String) ->Result<LabelId>{
-        if let Some(def) = self.named.get_mut(&label){
-            if def.has_defined{
-                return Err(CompileError::LabelDefinedMultiTimes)
+    pub fn def_label(&mut self, label: String) -> Result<LabelId> {
+        if let Some(def) = self.named.get_mut(&label) {
+            if def.has_defined {
+                return Err(CompileError::LabelDefinedMultiTimes);
             }
             def.has_defined = true;
             Ok(def.id)
-        }else{
+        } else {
             let id = self.allocate;
-            self.named.insert(label, LabelDef{
-                id,
-                has_defined: true,
-            });
-            self.allocate+=1;
+            self.named.insert(
+                label,
+                LabelDef {
+                    id,
+                    has_defined: true,
+                },
+            );
+            self.allocate += 1;
             Ok(id)
         }
     }
 
-    pub fn use_label(&mut self, label:&str)->LabelId{
+    pub fn use_label(&mut self, label: &str) -> LabelId {
         if let Some(def) = self.named.get(label) {
             return def.id;
         }
         let id = self.allocate;
         self.allocate += 1;
-        self.named.insert(label.to_string(), LabelDef{
-            id,
-            has_defined: false,
-        });
+        self.named.insert(
+            label.to_string(),
+            LabelDef {
+                id,
+                has_defined: false,
+            },
+        );
         return id;
     }
 
-    pub fn def_anonymous(&mut self) -> LabelId{
+    pub fn def_anonymous(&mut self) -> LabelId {
         let ret = self.allocate;
         self.allocate += 1;
         ret
@@ -141,7 +144,7 @@ pub struct FunctionScope {
     up_values: Vec<(String, IdentPos)>,
     reg_alloc: RegisterAllocator,
     consts: Vec<ConstantDescriptor>,
-    label_mgr:Rc<RefCell<LabelManager>>,
+    label_mgr: Rc<RefCell<LabelManager>>,
 }
 
 impl FunctionScope {
@@ -158,7 +161,7 @@ impl FunctionScope {
     pub fn consts(&self) -> &Vec<ConstantDescriptor> {
         &self.consts
     }
-    pub fn up_values(&self) -> &Vec<(String, IdentPos)>{
+    pub fn up_values(&self) -> &Vec<(String, IdentPos)> {
         &self.up_values
     }
 }
